@@ -4,11 +4,12 @@ Multi-document chat interface for PDF documents
 """
 
 import streamlit as st
-from goldmansachs.awm_genai import DocUtils, LLM, LLMConfig
+from goldmansachs.awm_genai import LLM, LLMConfig
 import config
 from datetime import datetime
 import tempfile
 import os
+import pdfplumber
 
 # Page configuration
 st.set_page_config(
@@ -18,8 +19,8 @@ st.set_page_config(
 )
 
 # Initialize session state
-if 'documents' not in st.session_state:
-    st.session_state.documents = None
+if 'extracted_text' not in st.session_state:
+    st.session_state.extracted_text = None
 if 'llm' not in st.session_state:
     st.session_state.llm = None
 if 'chat_history' not in st.session_state:
@@ -87,18 +88,32 @@ with st.sidebar:
         if len(uploaded_files) > config.MAX_DOCUMENTS:
             st.error(f"Maximum {config.MAX_DOCUMENTS} documents allowed")
         else:
-            with st.spinner("Processing documents..."):
+            with st.spinner("Extracting text from PDFs..."):
                 try:
-                    # Save uploaded files temporarily
-                    temp_files = []
+                    all_text = []
+                    
+                    # Extract text from each PDF
                     for uploaded_file in uploaded_files:
+                        # Save to temp file
                         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                             tmp_file.write(uploaded_file.getvalue())
-                            temp_files.append(tmp_file.name)
+                            tmp_path = tmp_file.name
+                        
+                        try:
+                            # Extract text using pdfplumber
+                            with pdfplumber.open(tmp_path) as pdf:
+                                doc_text = f"\n\n--- Document: {uploaded_file.name} ---\n\n"
+                                for page_num, page in enumerate(pdf.pages, 1):
+                                    text = page.extract_text()
+                                    if text:
+                                        doc_text += f"\n[Page {page_num}]\n{text}\n"
+                                all_text.append(doc_text)
+                        finally:
+                            # Clean up temp file
+                            os.unlink(tmp_path)
                     
-                    # Initialize DocUtils and upload
-                    doc_utils = DocUtils(app_id=app_id, env=env)
-                    st.session_state.documents = doc_utils.upload(file_paths=temp_files)
+                    # Combine all extracted text
+                    st.session_state.extracted_text = "\n\n".join(all_text)
                     
                     # Initialize LLM
                     llm_config = LLMConfig(
@@ -114,10 +129,6 @@ with st.sidebar:
                     st.session_state.uploaded_files_info = [
                         {"name": f.name, "size": f.size} for f in uploaded_files
                     ]
-                    
-                    # Clean up temp files
-                    for temp_file in temp_files:
-                        os.unlink(temp_file)
                     
                     st.success(f"Successfully processed {len(uploaded_files)} documents!")
                     st.session_state.chat_history = []  # Reset chat history
@@ -150,12 +161,12 @@ st.title("Document Chat Bot")
 st.markdown("Ask questions about your uploaded documents.")
 
 # Instructions
-if not st.session_state.documents:
+if not st.session_state.extracted_text:
     st.info("""
     **Getting Started:**
     1. Configure your App ID and Environment in the sidebar
     2. Upload one or more PDF documents
-    3. Click 'Process Documents' to initialize the system
+    3. Click 'Process Documents' to extract text
     4. Start asking questions about your documents
     """)
 else:
@@ -193,11 +204,18 @@ else:
         
         with st.spinner("Generating response..."):
             try:
+                # Create prompt with document context
+                full_prompt = f"""Based on the following document content, please answer the question.
+
+Document Content:
+{st.session_state.extracted_text}
+
+Question: {prompt}
+
+Please provide a detailed answer based only on the information in the documents above. If the information is not in the documents, please say so."""
+                
                 # Get response from LLM
-                response = st.session_state.llm.invoke(
-                    prompt,
-                    documents=st.session_state.documents,
-                )
+                response = st.session_state.llm.invoke(full_prompt)
                 
                 # Update chat history with actual response
                 st.session_state.chat_history[-1]["response"] = response
