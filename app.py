@@ -246,12 +246,17 @@ else:
                 # Create prompt with document context
                 full_prompt = f"""Based on the following document content, please answer the question.
 
+The content includes text, tables, and structured JSON data. Pay attention to:
+- Tables with their headers and data
+- JSON objects with their fields and values
+- Regular text content
+
 Document Content:
 {st.session_state.extracted_text}
 
 Question: {prompt}
 
-Please provide a detailed answer based only on the information in the documents above. If the information is not in the documents, please say so."""
+Please provide a detailed answer based only on the information in the documents above. If referencing a table or JSON object, mention the source (e.g., "Table 1 on Page 3" or "JSON Object 2 on Page 5"). If the information is not in the documents, please say so."""
                 
                 # Get response from LLM
                 response = st.session_state.llm.invoke(full_prompt)

@@ -1,11 +1,13 @@
 """
 PDF Extraction Module
-Handles extraction of text and tables from PDF documents using pdfplumber
+Handles extraction of text, tables, and JSON data from PDF documents using pdfplumber
 """
 
 import pdfplumber
 import pandas as pd
 from typing import List, Dict, Tuple
+import json
+import re
 
 
 class PDFExtractor:
@@ -16,14 +18,14 @@ class PDFExtractor:
     
     def extract_from_file(self, file_path: str, filename: str = None) -> str:
         """
-        Extract text and tables from a PDF file.
+        Extract text, tables, and JSON data from a PDF file.
         
         Args:
             file_path: Path to the PDF file
             filename: Optional display name for the file
             
         Returns:
-            Formatted string with all content including tables
+            Formatted string with all content including tables and JSON
         """
         if filename is None:
             filename = file_path
@@ -52,9 +54,29 @@ class PDFExtractor:
                 else:
                     text = page.extract_text()
                 
-                # Add non-table text
+                # Check for JSON/JSONL content in the text
                 if text and text.strip():
-                    content_parts.append(f"{text}\n")
+                    # Detect and format JSON content
+                    json_objects = self._extract_json_content(text)
+                    
+                    if json_objects:
+                        # Add regular text (non-JSON parts)
+                        non_json_text = self._remove_json_from_text(text)
+                        if non_json_text.strip():
+                            content_parts.append(f"{non_json_text}\n")
+                        
+                        # Add formatted JSON objects
+                        for json_idx, json_obj in enumerate(json_objects, 1):
+                            formatted_json = self._format_json_object(
+                                json_obj, 
+                                page_num, 
+                                json_idx,
+                                filename
+                            )
+                            content_parts.append(f"\n{formatted_json}\n")
+                    else:
+                        # No JSON found, add as regular text
+                        content_parts.append(f"{text}\n")
                 
                 # Add tables with proper formatting
                 if tables:
@@ -171,6 +193,83 @@ class PDFExtractor:
                 all_content.append(f"\n\n[ERROR] Failed to extract from {filename}: {str(e)}\n")
         
         return "\n\n".join(all_content)
+    
+    def _extract_json_content(self, text: str) -> List[Dict]:
+        """
+        Extract JSON or JSONL objects from text.
+        
+        Args:
+            text: Text that may contain JSON data
+            
+        Returns:
+            List of parsed JSON objects
+        """
+        json_objects = []
+        
+        # Try to find JSON objects using regex
+        # Pattern for JSON objects
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        
+        matches = re.finditer(json_pattern, text, re.DOTALL)
+        
+        for match in matches:
+            try:
+                json_str = match.group(0)
+                json_obj = json.loads(json_str)
+                json_objects.append(json_obj)
+            except json.JSONDecodeError:
+                # Try to handle JSONL (one JSON per line)
+                lines = match.group(0).split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('{') and line.endswith('}'):
+                        try:
+                            json_obj = json.loads(line)
+                            json_objects.append(json_obj)
+                        except:
+                            pass
+        
+        return json_objects
+    
+    def _remove_json_from_text(self, text: str) -> str:
+        """Remove JSON objects from text to get only regular text."""
+        # Remove JSON objects
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        cleaned_text = re.sub(json_pattern, '', text, flags=re.DOTALL)
+        return cleaned_text
+    
+    def _format_json_object(self, json_obj: Dict, page_num: int, json_idx: int, filename: str) -> str:
+        """
+        Format a JSON object for better LLM understanding.
+        
+        Args:
+            json_obj: Parsed JSON object
+            page_num: Page number where JSON appears
+            json_idx: Index of JSON object on the page
+            filename: Name of the source document
+            
+        Returns:
+            Formatted JSON string
+        """
+        json_parts = []
+        json_parts.append(f"--- JSON OBJECT {json_idx} (Document: {filename}, Page {page_num}) ---")
+        
+        # Add formatted key-value pairs
+        json_parts.append("\nStructured Data:")
+        for key, value in json_obj.items():
+            # Clean up the value for better readability
+            if isinstance(value, str):
+                # Remove extra whitespace
+                value = ' '.join(value.split())
+            json_parts.append(f"  {key}: {value}")
+        
+        # Add JSON format for reference
+        json_parts.append("\nJSON Format:")
+        json_parts.append(json.dumps(json_obj, indent=2))
+        
+        json_parts.append(f"--- END JSON OBJECT {json_idx} ---\n")
+        
+        return "\n".join(json_parts)
     
     def extract_tables_only(self, file_path: str) -> List[pd.DataFrame]:
         """
