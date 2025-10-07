@@ -69,7 +69,12 @@ with st.sidebar:
     
     # Model Configuration
     st.subheader("Model Settings")
-    model_name = st.text_input("Model Name", value=config.DEFAULT_MODEL)
+    model_name = st.selectbox(
+        "Select Model",
+        config.AVAILABLE_MODELS,
+        index=config.AVAILABLE_MODELS.index(config.DEFAULT_MODEL),
+        help="Choose between Pro (more capable) or Flash Lite (faster)"
+    )
     temperature = st.slider("Temperature", 0.0, 1.0, float(config.DEFAULT_TEMPERATURE), 0.1)
     log_level = st.selectbox("Log Level", ["DEBUG", "INFO", "WARNING", "ERROR"], index=0)
     
