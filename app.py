@@ -14,7 +14,6 @@ import pdfplumber
 # Page configuration
 st.set_page_config(
     page_title="Document Chat Bot",
-    page_icon="📄",
     layout="wide"
 )
 
