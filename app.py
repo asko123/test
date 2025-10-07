@@ -1,0 +1,210 @@
+"""
+Streamlit App for Document Chat Bot
+Multi-document chat interface for PDF documents
+"""
+
+import streamlit as st
+from goldmansachs.awm_genai import DocUtils, LLM, LLMConfig
+import config
+from datetime import datetime
+import tempfile
+import os
+
+# Page configuration
+st.set_page_config(
+    page_title="Document Chat Bot",
+    page_icon="📄",
+    layout="wide"
+)
+
+# Initialize session state
+if 'documents' not in st.session_state:
+    st.session_state.documents = None
+if 'llm' not in st.session_state:
+    st.session_state.llm = None
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'uploaded_files_info' not in st.session_state:
+    st.session_state.uploaded_files_info = []
+
+# Custom CSS
+st.markdown("""
+<style>
+    .stApp {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    .chat-message {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        border-left: 3px solid #0066cc;
+    }
+    .user-message {
+        background-color: #e3f2fd;
+    }
+    .assistant-message {
+        background-color: #f5f5f5;
+    }
+    .doc-info {
+        background-color: #fff3cd;
+        padding: 0.5rem;
+        border-radius: 0.3rem;
+        margin: 0.3rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    st.title("Configuration")
+    
+    # Application Configuration
+    st.subheader("Settings")
+    app_id = st.text_input("App ID", value=config.APP_ID)
+    env = st.selectbox("Environment", ["uat", "prod"], index=0 if config.ENV == "uat" else 1)
+    
+    st.markdown("---")
+    
+    # Model Configuration
+    st.subheader("Model Settings")
+    model_name = st.text_input("Model Name", value=config.DEFAULT_MODEL)
+    temperature = st.slider("Temperature", 0.0, 1.0, float(config.DEFAULT_TEMPERATURE), 0.1)
+    log_level = st.selectbox("Log Level", ["DEBUG", "INFO", "WARNING", "ERROR"], index=0)
+    
+    st.markdown("---")
+    
+    # Document Upload
+    st.subheader("Upload Documents")
+    uploaded_files = st.file_uploader(
+        "Choose PDF files",
+        type=config.SUPPORTED_FILE_TYPES,
+        accept_multiple_files=True,
+        help=f"Upload up to {config.MAX_DOCUMENTS} PDF files (max {config.MAX_FILE_SIZE_MB}MB each)"
+    )
+    
+    if st.button("Process Documents", type="primary", disabled=not uploaded_files):
+        if len(uploaded_files) > config.MAX_DOCUMENTS:
+            st.error(f"Maximum {config.MAX_DOCUMENTS} documents allowed")
+        else:
+            with st.spinner("Processing documents..."):
+                try:
+                    # Save uploaded files temporarily
+                    temp_files = []
+                    for uploaded_file in uploaded_files:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                            tmp_file.write(uploaded_file.getvalue())
+                            temp_files.append(tmp_file.name)
+                    
+                    # Initialize DocUtils and upload
+                    doc_utils = DocUtils(app_id=app_id, env=env)
+                    st.session_state.documents = doc_utils.upload(file_paths=temp_files)
+                    
+                    # Initialize LLM
+                    llm_config = LLMConfig(
+                        app_id=app_id,
+                        env=env,
+                        model_name=model_name,
+                        temperature=temperature,
+                        log_level=log_level,
+                    )
+                    st.session_state.llm = LLM.init(config=llm_config)
+                    
+                    # Store file info
+                    st.session_state.uploaded_files_info = [
+                        {"name": f.name, "size": f.size} for f in uploaded_files
+                    ]
+                    
+                    # Clean up temp files
+                    for temp_file in temp_files:
+                        os.unlink(temp_file)
+                    
+                    st.success(f"Successfully processed {len(uploaded_files)} documents!")
+                    st.session_state.chat_history = []  # Reset chat history
+                    
+                except Exception as e:
+                    st.error(f"Error processing documents: {str(e)}")
+    
+    # Display uploaded documents
+    if st.session_state.uploaded_files_info:
+        st.markdown("---")
+        st.subheader("Loaded Documents")
+        for i, doc_info in enumerate(st.session_state.uploaded_files_info, 1):
+            st.markdown(f"""
+            <div class="doc-info">
+                {i}. {doc_info['name']}<br>
+                <small>Size: {doc_info['size'] / 1024:.2f} KB</small>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Clear chat button
+    if st.session_state.chat_history and st.button("Clear Chat History"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+# Main content
+st.title("Document Chat Bot")
+st.markdown("Ask questions about your uploaded documents.")
+
+# Instructions
+if not st.session_state.documents:
+    st.info("""
+    **Getting Started:**
+    1. Configure your App ID and Environment in the sidebar
+    2. Upload one or more PDF documents
+    3. Click 'Process Documents' to initialize the system
+    4. Start asking questions about your documents
+    """)
+else:
+    # Display chat history
+    for message in st.session_state.chat_history:
+        # User message
+        st.markdown(f"""
+        <div class="chat-message user-message">
+            <strong>You:</strong><br>
+            {message['question']}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Assistant message
+        st.markdown(f"""
+        <div class="chat-message assistant-message">
+            <strong>Assistant:</strong><br>
+            {message['response']}
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Chat input
+    if prompt := st.chat_input("Ask a question about your documents..."):
+        # Add user message to chat history
+        with st.spinner("Generating response..."):
+            try:
+                # Get response from LLM
+                response = st.session_state.llm.invoke(
+                    prompt,
+                    documents=st.session_state.documents,
+                )
+                
+                # Add to chat history
+                st.session_state.chat_history.append({
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "question": prompt,
+                    "response": response
+                })
+                
+                # Rerun to display new message
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Error generating response: {str(e)}")
+
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; color: #666;">
+    <small>Multi-Document Chat System</small>
+</div>
+""", unsafe_allow_html=True)
+
