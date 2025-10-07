@@ -121,6 +121,7 @@ with st.sidebar:
                     
                     st.success(f"Successfully processed {len(uploaded_files)} documents!")
                     st.session_state.chat_history = []  # Reset chat history
+                    st.rerun()  # Refresh to show chat interface
                     
                 except Exception as e:
                     st.error(f"Error processing documents: {str(e)}")
@@ -158,6 +159,9 @@ if not st.session_state.documents:
     4. Start asking questions about your documents
     """)
 else:
+    # Show ready message
+    st.success(f"Ready to chat! {len(st.session_state.uploaded_files_info)} documents loaded.")
+    
     # Display chat history
     for message in st.session_state.chat_history:
         # User message
@@ -176,9 +180,17 @@ else:
         </div>
         """, unsafe_allow_html=True)
     
-    # Chat input
-    if prompt := st.chat_input("Ask a question about your documents..."):
-        # Add user message to chat history
+    # Chat input - always visible when documents are loaded
+    prompt = st.chat_input("Ask a question about your documents...")
+    
+    if prompt:
+        # Display user message immediately
+        st.session_state.chat_history.append({
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "question": prompt,
+            "response": "..."
+        })
+        
         with st.spinner("Generating response..."):
             try:
                 # Get response from LLM
@@ -187,18 +199,15 @@ else:
                     documents=st.session_state.documents,
                 )
                 
-                # Add to chat history
-                st.session_state.chat_history.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "question": prompt,
-                    "response": response
-                })
+                # Update chat history with actual response
+                st.session_state.chat_history[-1]["response"] = response
                 
                 # Rerun to display new message
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Error generating response: {str(e)}")
+                st.session_state.chat_history[-1]["response"] = f"Error: {str(e)}"
+                st.rerun()
 
 # Footer
 st.markdown("---")
