@@ -9,7 +9,7 @@ import config
 from datetime import datetime
 import tempfile
 import os
-import pdfplumber
+from pdf_extractor import PDFExtractor
 
 # Page configuration
 st.set_page_config(
@@ -129,32 +129,30 @@ with st.sidebar:
         if len(uploaded_files) > config.MAX_DOCUMENTS:
             st.error(f"Maximum {config.MAX_DOCUMENTS} documents allowed")
         else:
-            with st.spinner("Extracting text from PDFs..."):
+            with st.spinner("Extracting text and tables from PDFs..."):
                 try:
-                    all_text = []
+                    # Initialize PDF extractor
+                    extractor = PDFExtractor()
                     
-                    # Extract text from each PDF
+                    temp_files = []
+                    filenames = []
+                    
+                    # Save uploaded files temporarily
                     for uploaded_file in uploaded_files:
-                        # Save to temp file
                         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                             tmp_file.write(uploaded_file.getvalue())
-                            tmp_path = tmp_file.name
-                        
-                        try:
-                            # Extract text using pdfplumber
-                            with pdfplumber.open(tmp_path) as pdf:
-                                doc_text = f"\n\n--- Document: {uploaded_file.name} ---\n\n"
-                                for page_num, page in enumerate(pdf.pages, 1):
-                                    text = page.extract_text()
-                                    if text:
-                                        doc_text += f"\n[Page {page_num}]\n{text}\n"
-                                all_text.append(doc_text)
-                        finally:
-                            # Clean up temp file
-                            os.unlink(tmp_path)
+                            temp_files.append(tmp_file.name)
+                            filenames.append(uploaded_file.name)
                     
-                    # Combine all extracted text
-                    st.session_state.extracted_text = "\n\n".join(all_text)
+                    # Extract content from all files
+                    st.session_state.extracted_text = extractor.extract_from_multiple_files(
+                        temp_files, 
+                        filenames
+                    )
+                    
+                    # Clean up temp files
+                    for tmp_file in temp_files:
+                        os.unlink(tmp_file)
                     
                     # Initialize LLM
                     llm_config = LLMConfig(
