@@ -53,6 +53,43 @@ st.markdown("""
         border-radius: 0.3rem;
         margin: 0.3rem 0;
     }
+    
+    /* Improve selectbox visibility */
+    .stSelectbox {
+        background-color: white;
+    }
+    .stSelectbox > div > div {
+        background-color: white;
+        border: 2px solid #1f77b4;
+    }
+    .stSelectbox label {
+        color: #262730;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    
+    /* Improve text input visibility */
+    .stTextInput > div > div > input {
+        background-color: white;
+        border: 2px solid #1f77b4;
+        color: #262730;
+    }
+    
+    /* Improve slider visibility */
+    .stSlider > div > div > div {
+        background-color: #1f77b4;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #f0f2f6;
+    }
+    
+    /* Make dropdown options more visible */
+    .stSelectbox div[data-baseweb="select"] > div {
+        background-color: white;
+        color: #262730;
+    }
 </style>
 """, unsafe_allow_html=True)
 
