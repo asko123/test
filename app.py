@@ -299,6 +299,9 @@ Answer:"""
                 # Extract actual content from response
                 actual_response = None
                 
+                # Debug: show response type
+                response_type = type(response).__name__
+                
                 # Try different response formats
                 if hasattr(response, 'content'):
                     # Response object with content attribute
@@ -310,8 +313,12 @@ Answer:"""
                     elif 'content' in response:
                         actual_response = response['content']
                     else:
-                        actual_response = str(response)
+                        # Show the full response for debugging
+                        actual_response = f"[DEBUG] Unexpected response format ({response_type}): {str(response)[:500]}"
+                elif isinstance(response, str):
+                    actual_response = response
                 else:
+                    # Try to convert to string
                     actual_response = str(response)
                 
                 # Clean up the response - remove escape sequences and format properly
@@ -319,8 +326,9 @@ Answer:"""
                     # Replace literal \n with actual newlines
                     actual_response = actual_response.replace('\\n\\n', '\n\n')
                     actual_response = actual_response.replace('\\n', '\n')
-                    # Remove any markdown bold that might interfere
                     actual_response = actual_response.strip()
+                else:
+                    actual_response = f"[ERROR] No response content received. Response type: {response_type}"
                 
                 # Update chat history with actual response
                 st.session_state.chat_history[-1]["response"] = actual_response
