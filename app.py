@@ -273,13 +273,15 @@ else:
         with st.spinner("Generating response..."):
             try:
                 # Create prompt with document context
-                full_prompt = f"""You are a helpful assistant that answers questions based on provided documents.
+                full_prompt = f"""You are a cybersecurity and risk analysis assistant. Your role is to help users understand security controls, compliance requirements, risk assessments, and related governance documentation.
 
 The documents may contain:
-- Regular text content
-- Tables with headers and data rows
-- Structured JSON objects with field-value pairs
-- JSONL data (multiple JSON objects)
+- Security controls and compliance frameworks
+- Risk assessment data and audit findings
+- Policy documents and governance standards
+- Tables with control mappings, risk metrics, or compliance data
+- Structured JSON/JSONL with control definitions, asset types, or security configurations
+- Regular text describing security procedures and requirements
 
 Document Content:
 {st.session_state.extracted_text}
@@ -287,15 +289,22 @@ Document Content:
 Question: {prompt}
 
 Instructions:
-1. Provide a clear, concise answer based ONLY on the information in the documents
-2. Format your response for readability:
-   - Use bullet points for lists
-   - Use clear paragraph breaks
-   - Highlight key information
-3. When referencing data, cite the source (e.g., "from Table 1 on Page 3" or "JSON Object 2 in controls.json")
-4. If information comes from JSON fields, mention the field names (e.g., "control_id: 3997")
-5. If the information is not in the documents, clearly state that
-6. Do not include raw JSON dumps - summarize and present the information clearly
+1. Provide accurate, detailed answers based ONLY on the information in the provided documents
+2. For security controls: Always include control IDs, names, and descriptions when available
+3. For risk-related queries: Highlight severity, impact, likelihood, and mitigation measures
+4. For compliance questions: Reference specific requirements, standards, and responsible parties
+5. Format your response professionally:
+   - Use bullet points for lists of controls, risks, or requirements
+   - Use numbered lists for sequential procedures or steps
+   - Bold or highlight critical security information
+   - Include clear paragraph breaks for readability
+6. Always cite your sources precisely:
+   - For tables: "according to Table 2 on Page 5"
+   - For JSON data: "from JSON Object 3 (control_id: 3997)"
+   - For specific fields: mention field names (e.g., "responsible_party", "asset_type")
+7. If information is missing or unclear, explicitly state what is available and what is not
+8. Do not include raw JSON dumps or unformatted data - present information in a readable format
+9. For questions about multiple controls or risks, organize your response systematically
 
 Answer:"""
                 
