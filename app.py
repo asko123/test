@@ -269,7 +269,11 @@ else:
                 # Create prompt with document context
                 full_prompt = f"""You are a helpful assistant that answers questions based on provided documents.
 
-The documents contain text, tables, and structured JSON data.
+The documents may contain:
+- Regular text content
+- Tables with headers and data rows
+- Structured JSON objects with field-value pairs
+- JSONL data (multiple JSON objects)
 
 Document Content:
 {st.session_state.extracted_text}
@@ -282,9 +286,10 @@ Instructions:
    - Use bullet points for lists
    - Use clear paragraph breaks
    - Highlight key information
-3. When referencing data, cite the source (e.g., "according to Table 1 on Page 3" or "from JSON Object 2 on Page 5")
-4. If the information is not in the documents, clearly state that
-5. Do not include raw JSON or table dumps - summarize the information
+3. When referencing data, cite the source (e.g., "from Table 1 on Page 3" or "JSON Object 2 in controls.json")
+4. If information comes from JSON fields, mention the field names (e.g., "control_id: 3997")
+5. If the information is not in the documents, clearly state that
+6. Do not include raw JSON dumps - summarize and present the information clearly
 
 Answer:"""
                 
