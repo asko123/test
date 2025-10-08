@@ -35,16 +35,27 @@ st.markdown("""
         margin: 0 auto;
     }
     .chat-message {
-        padding: 1rem;
+        padding: 1.2rem;
         border-radius: 0.5rem;
-        margin-bottom: 1rem;
-        border-left: 3px solid #0066cc;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .user-message {
         background-color: #e3f2fd;
+        border-left: 4px solid #1976d2;
     }
     .assistant-message {
-        background-color: #f5f5f5;
+        background-color: #ffffff;
+        border-left: 4px solid #4caf50;
+        line-height: 1.6;
+        font-size: 0.95rem;
+    }
+    .assistant-message p {
+        margin: 0.5rem 0;
+    }
+    .assistant-message ul, .assistant-message ol {
+        margin: 0.5rem 0;
+        padding-left: 1.5rem;
     }
     .doc-info {
         background-color: #fff3cd;
@@ -217,16 +228,16 @@ else:
         # User message
         st.markdown(f"""
         <div class="chat-message user-message">
-            <strong>You:</strong><br>
+            <strong>Question:</strong><br>
             {message['question']}
         </div>
         """, unsafe_allow_html=True)
         
-        # Assistant message
+        # Response message - formatted
+        formatted_response = message['response'].strip()
         st.markdown(f"""
         <div class="chat-message assistant-message">
-            <strong>Assistant:</strong><br>
-            {message['response']}
+            {formatted_response}
         </div>
         """, unsafe_allow_html=True)
     
@@ -244,19 +255,26 @@ else:
         with st.spinner("Generating response..."):
             try:
                 # Create prompt with document context
-                full_prompt = f"""Based on the following document content, please answer the question.
+                full_prompt = f"""You are a helpful assistant that answers questions based on provided documents.
 
-The content includes text, tables, and structured JSON data. Pay attention to:
-- Tables with their headers and data
-- JSON objects with their fields and values
-- Regular text content
+The documents contain text, tables, and structured JSON data.
 
 Document Content:
 {st.session_state.extracted_text}
 
 Question: {prompt}
 
-Please provide a detailed answer based only on the information in the documents above. If referencing a table or JSON object, mention the source (e.g., "Table 1 on Page 3" or "JSON Object 2 on Page 5"). If the information is not in the documents, please say so."""
+Instructions:
+1. Provide a clear, concise answer based ONLY on the information in the documents
+2. Format your response for readability:
+   - Use bullet points for lists
+   - Use clear paragraph breaks
+   - Highlight key information
+3. When referencing data, cite the source (e.g., "according to Table 1 on Page 3" or "from JSON Object 2 on Page 5")
+4. If the information is not in the documents, clearly state that
+5. Do not include raw JSON or table dumps - summarize the information
+
+Answer:"""
                 
                 # Get response from LLM
                 response = st.session_state.llm.invoke(full_prompt)
