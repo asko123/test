@@ -280,7 +280,13 @@ Answer:"""
                 response = st.session_state.llm.invoke(full_prompt)
                 
                 # Extract actual content from response
-                if isinstance(response, dict):
+                actual_response = None
+                
+                # Try different response formats
+                if hasattr(response, 'content'):
+                    # Response object with content attribute
+                    actual_response = response.content
+                elif isinstance(response, dict):
                     # Handle SDK response format
                     if 'Response' in response and 'content' in response['Response']:
                         actual_response = response['Response']['content']
@@ -290,6 +296,14 @@ Answer:"""
                         actual_response = str(response)
                 else:
                     actual_response = str(response)
+                
+                # Clean up the response - remove escape sequences and format properly
+                if actual_response:
+                    # Replace literal \n with actual newlines
+                    actual_response = actual_response.replace('\\n\\n', '\n\n')
+                    actual_response = actual_response.replace('\\n', '\n')
+                    # Remove any markdown bold that might interfere
+                    actual_response = actual_response.strip()
                 
                 # Update chat history with actual response
                 st.session_state.chat_history[-1]["response"] = actual_response
