@@ -279,8 +279,20 @@ Answer:"""
                 # Get response from LLM
                 response = st.session_state.llm.invoke(full_prompt)
                 
+                # Extract actual content from response
+                if isinstance(response, dict):
+                    # Handle SDK response format
+                    if 'Response' in response and 'content' in response['Response']:
+                        actual_response = response['Response']['content']
+                    elif 'content' in response:
+                        actual_response = response['content']
+                    else:
+                        actual_response = str(response)
+                else:
+                    actual_response = str(response)
+                
                 # Update chat history with actual response
-                st.session_state.chat_history[-1]["response"] = response
+                st.session_state.chat_history[-1]["response"] = actual_response
                 
                 # Rerun to display new message
                 st.rerun()
