@@ -299,36 +299,44 @@ Answer:"""
                 # Extract actual content from response
                 actual_response = None
                 
-                # Debug: show response type
-                response_type = type(response).__name__
-                
                 # Try different response formats
-                if hasattr(response, 'content'):
-                    # Response object with content attribute
-                    actual_response = response.content
-                elif isinstance(response, dict):
-                    # Handle SDK response format
-                    if 'Response' in response and 'content' in response['Response']:
-                        actual_response = response['Response']['content']
-                    elif 'content' in response:
-                        actual_response = response['content']
-                    else:
-                        # Show the full response for debugging
-                        actual_response = f"[DEBUG] Unexpected response format ({response_type}): {str(response)[:500]}"
-                elif isinstance(response, str):
-                    actual_response = response
-                else:
-                    # Try to convert to string
-                    actual_response = str(response)
+                try:
+                    # Method 1: Check for content attribute
+                    if hasattr(response, 'content'):
+                        actual_response = response.content
+                    # Method 2: Check if it's a dict with Response.content
+                    elif isinstance(response, dict):
+                        if 'Response' in response and isinstance(response['Response'], dict):
+                            actual_response = response['Response'].get('content', None)
+                        elif 'content' in response:
+                            actual_response = response['content']
+                        else:
+                            # Try to find any key that might contain the answer
+                            for key in ['answer', 'text', 'message', 'result']:
+                                if key in response:
+                                    actual_response = response[key]
+                                    break
+                    # Method 3: It's already a string
+                    elif isinstance(response, str):
+                        actual_response = response
+                    
+                    # If still None, convert to string
+                    if actual_response is None:
+                        actual_response = str(response)
+                    
+                    # Clean up escape sequences
+                    if isinstance(actual_response, str):
+                        actual_response = actual_response.replace('\\n\\n', '\n\n')
+                        actual_response = actual_response.replace('\\n', '\n')
+                        actual_response = actual_response.replace('\\t', '\t')
+                        actual_response = actual_response.strip()
+                    
+                except Exception as parse_error:
+                    actual_response = f"[ERROR] Failed to parse response: {str(parse_error)}\n\nRaw response: {str(response)[:500]}"
                 
-                # Clean up the response - remove escape sequences and format properly
-                if actual_response:
-                    # Replace literal \n with actual newlines
-                    actual_response = actual_response.replace('\\n\\n', '\n\n')
-                    actual_response = actual_response.replace('\\n', '\n')
-                    actual_response = actual_response.strip()
-                else:
-                    actual_response = f"[ERROR] No response content received. Response type: {response_type}"
+                # Final check
+                if not actual_response or actual_response.strip() == "":
+                    actual_response = f"[ERROR] Empty response received. Response type: {type(response).__name__}"
                 
                 # Update chat history with actual response
                 st.session_state.chat_history[-1]["response"] = actual_response
