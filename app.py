@@ -10,6 +10,7 @@ from datetime import datetime
 import tempfile
 import os
 from pdf_extractor import PDFExtractor
+from json_extractor import JSONExtractor
 
 # Page configuration
 st.set_page_config(
@@ -130,40 +131,51 @@ with st.sidebar:
     # Document Upload
     st.subheader("Upload Documents")
     uploaded_files = st.file_uploader(
-        "Choose PDF files",
+        "Choose files",
         type=config.SUPPORTED_FILE_TYPES,
         accept_multiple_files=True,
-        help=f"Upload up to {config.MAX_DOCUMENTS} PDF files (max {config.MAX_FILE_SIZE_MB}MB each)"
+        help=f"Upload up to {config.MAX_DOCUMENTS} files (PDF, JSON, or JSONL) - max {config.MAX_FILE_SIZE_MB}MB each"
     )
     
     if st.button("Process Documents", type="primary", disabled=not uploaded_files):
         if len(uploaded_files) > config.MAX_DOCUMENTS:
             st.error(f"Maximum {config.MAX_DOCUMENTS} documents allowed")
         else:
-            with st.spinner("Extracting text and tables from PDFs..."):
+            with st.spinner("Processing documents..."):
                 try:
-                    # Initialize PDF extractor
-                    extractor = PDFExtractor()
+                    # Initialize extractors
+                    pdf_extractor = PDFExtractor()
+                    json_extractor = JSONExtractor()
                     
-                    temp_files = []
-                    filenames = []
+                    all_content = []
                     
-                    # Save uploaded files temporarily
+                    # Process each uploaded file based on type
                     for uploaded_file in uploaded_files:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                        file_ext = uploaded_file.name.split('.')[-1].lower()
+                        
+                        # Save to temp file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_ext}') as tmp_file:
                             tmp_file.write(uploaded_file.getvalue())
-                            temp_files.append(tmp_file.name)
-                            filenames.append(uploaded_file.name)
+                            tmp_path = tmp_file.name
+                        
+                        try:
+                            if file_ext == 'pdf':
+                                # Extract from PDF
+                                content = pdf_extractor.extract_from_file(tmp_path, uploaded_file.name)
+                                all_content.append(content)
+                            elif file_ext == 'json':
+                                # Extract from JSON
+                                content = json_extractor.extract_from_json_file(tmp_path, uploaded_file.name)
+                                all_content.append(content)
+                            elif file_ext == 'jsonl':
+                                # Extract from JSONL
+                                content = json_extractor.extract_from_jsonl_file(tmp_path, uploaded_file.name)
+                                all_content.append(content)
+                        finally:
+                            os.unlink(tmp_path)
                     
-                    # Extract content from all files
-                    st.session_state.extracted_text = extractor.extract_from_multiple_files(
-                        temp_files, 
-                        filenames
-                    )
-                    
-                    # Clean up temp files
-                    for tmp_file in temp_files:
-                        os.unlink(tmp_file)
+                    # Combine all extracted content
+                    st.session_state.extracted_text = "\n\n".join(all_content)
                     
                     # Initialize LLM
                     llm_config = LLMConfig(

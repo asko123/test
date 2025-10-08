@@ -12,6 +12,6 @@ LOG_LEVEL = "DEBUG"
 
 # Application Settings
 MAX_FILE_SIZE_MB = 50
-SUPPORTED_FILE_TYPES = ["pdf"]
+SUPPORTED_FILE_TYPES = ["pdf", "json", "jsonl"]
 MAX_DOCUMENTS = 10
 
