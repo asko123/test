@@ -134,7 +134,7 @@ with st.sidebar:
         "Choose files",
         type=config.SUPPORTED_FILE_TYPES,
         accept_multiple_files=True,
-        help=f"Upload up to {config.MAX_DOCUMENTS} files (PDF, JSON, or JSONL) - max {config.MAX_FILE_SIZE_MB}MB each"
+        help=f"Upload up to {config.MAX_DOCUMENTS} files (PDF, JSON, JSONL, or TXT) - max {config.MAX_FILE_SIZE_MB}MB each"
     )
     
     if st.button("Process Documents", type="primary", disabled=not uploaded_files):
@@ -171,6 +171,12 @@ with st.sidebar:
                                 # Extract from JSONL
                                 content = json_extractor.extract_from_jsonl_file(tmp_path, uploaded_file.name)
                                 all_content.append(content)
+                            elif file_ext == 'txt':
+                                # Extract from text file
+                                with open(tmp_path, 'r', encoding='utf-8') as f:
+                                    text_content = f.read()
+                                formatted_txt = f"\n\n{'='*80}\nDocument: {uploaded_file.name}\n{'='*80}\n\n{text_content}\n"
+                                all_content.append(formatted_txt)
                         finally:
                             os.unlink(tmp_path)
                     
