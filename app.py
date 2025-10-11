@@ -9,8 +9,10 @@ import config
 from datetime import datetime
 import tempfile
 import os
+import json
 from pdf_extractor import PDFExtractor
 from json_extractor import JSONExtractor
+from kg_retriever import KGRetriever
 
 # Page configuration
 st.set_page_config(
@@ -27,6 +29,10 @@ if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'uploaded_files_info' not in st.session_state:
     st.session_state.uploaded_files_info = []
+if 'kg_retriever' not in st.session_state:
+    st.session_state.kg_retriever = None
+if 'use_kg' not in st.session_state:
+    st.session_state.use_kg = True
 
 # Custom CSS
 st.markdown("""
@@ -128,6 +134,21 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Knowledge Graph Settings
+    st.subheader("Knowledge Graph")
+    use_kg = st.checkbox(
+        "Enable Knowledge Graph Enhancement",
+        value=st.session_state.use_kg,
+        help="Use Knowledge Graph to improve response quality by tracking entities and relationships"
+    )
+    st.session_state.use_kg = use_kg
+    
+    if use_kg and st.session_state.kg_retriever:
+        with st.expander("View KG Statistics"):
+            st.markdown(st.session_state.kg_retriever.export_graph_summary())
+    
+    st.markdown("---")
+    
     # Document Upload
     st.subheader("Upload Documents")
     uploaded_files = st.file_uploader(
@@ -148,6 +169,7 @@ with st.sidebar:
                     json_extractor = JSONExtractor()
                     
                     all_content = []
+                    documents_for_kg = []
                     
                     # Process each uploaded file based on type
                     for uploaded_file in uploaded_files:
@@ -163,25 +185,58 @@ with st.sidebar:
                                 # Extract from PDF
                                 content = pdf_extractor.extract_from_file(tmp_path, uploaded_file.name)
                                 all_content.append(content)
+                                documents_for_kg.append({
+                                    'name': uploaded_file.name,
+                                    'content': content,
+                                })
                             elif file_ext == 'json':
                                 # Extract from JSON
                                 content = json_extractor.extract_from_json_file(tmp_path, uploaded_file.name)
                                 all_content.append(content)
+                                
+                                # Also load raw JSON for KG
+                                with open(tmp_path, 'r', encoding='utf-8') as f:
+                                    json_data = json.load(f)
+                                documents_for_kg.append({
+                                    'name': uploaded_file.name,
+                                    'content': content,
+                                    'json_data': json_data,
+                                })
                             elif file_ext == 'jsonl':
                                 # Extract from JSONL
                                 content = json_extractor.extract_from_jsonl_file(tmp_path, uploaded_file.name)
                                 all_content.append(content)
+                                
+                                # Also load raw JSONL for KG
+                                with open(tmp_path, 'r', encoding='utf-8') as f:
+                                    jsonl_data = [json.loads(line) for line in f if line.strip()]
+                                documents_for_kg.append({
+                                    'name': uploaded_file.name,
+                                    'content': content,
+                                    'json_data': jsonl_data,
+                                })
                             elif file_ext == 'txt':
                                 # Extract from text file
                                 with open(tmp_path, 'r', encoding='utf-8') as f:
                                     text_content = f.read()
                                 formatted_txt = f"\n\n{'='*80}\nDocument: {uploaded_file.name}\n{'='*80}\n\n{text_content}\n"
                                 all_content.append(formatted_txt)
+                                documents_for_kg.append({
+                                    'name': uploaded_file.name,
+                                    'content': text_content,
+                                })
                         finally:
                             os.unlink(tmp_path)
                     
                     # Combine all extracted content
                     st.session_state.extracted_text = "\n\n".join(all_content)
+                    
+                    # Build Knowledge Graph if enabled
+                    if use_kg:
+                        with st.spinner("Building Knowledge Graph..."):
+                            kg_retriever = KGRetriever()
+                            kg_retriever.build_knowledge_graph(documents_for_kg)
+                            st.session_state.kg_retriever = kg_retriever
                     
                     # Initialize LLM
                     llm_config = LLMConfig(
@@ -233,13 +288,24 @@ if not st.session_state.extracted_text:
     st.info("""
     **Getting Started:**
     1. Configure your App ID and Environment in the sidebar
-    2. Upload one or more PDF documents
-    3. Click 'Process Documents' to extract text
-    4. Start asking questions about your documents
+    2. Enable Knowledge Graph Enhancement for better responses (recommended)
+    3. Upload one or more documents (PDF, JSON, JSONL, or TXT)
+    4. Click 'Process Documents' to extract text and build the knowledge graph
+    5. Start asking questions about your documents
+    
+    **Knowledge Graph Benefits:**
+    - Automatically extracts entities (controls, risks, assets, policies, etc.)
+    - Identifies relationships between entities
+    - Provides better context and linkage for more accurate responses
+    - Enables comprehensive analysis of connected information
     """)
 else:
-    # Show ready message
-    st.success(f"Ready to chat! {len(st.session_state.uploaded_files_info)} documents loaded.")
+    # Show ready message with KG stats
+    ready_message = f"Ready to chat! {len(st.session_state.uploaded_files_info)} documents loaded."
+    if st.session_state.use_kg and st.session_state.kg_retriever:
+        kg_stats = st.session_state.kg_retriever.get_statistics()
+        ready_message += f" | KG: {kg_stats['entity_count']} entities, {kg_stats['relationship_count']} relationships"
+    st.success(ready_message)
     
     # Display chat history
     for message in st.session_state.chat_history:
@@ -272,8 +338,16 @@ else:
         
         with st.spinner("Generating response..."):
             try:
-                # Create prompt with document context
-                full_prompt = f"""You are a cybersecurity and risk analysis assistant. Your role is to help users understand security controls, compliance requirements, risk assessments, and related governance documentation.
+                # Build prompt based on whether KG is enabled
+                if st.session_state.use_kg and st.session_state.kg_retriever:
+                    # Use Knowledge Graph enhanced prompt
+                    full_prompt = st.session_state.kg_retriever.build_contextual_prompt(
+                        prompt, 
+                        st.session_state.extracted_text
+                    )
+                else:
+                    # Use traditional prompt
+                    full_prompt = f"""You are a cybersecurity and risk analysis assistant. Your role is to help users understand security controls, compliance requirements, risk assessments, and related governance documentation.
 
 The documents may contain:
 - Security controls and compliance frameworks
