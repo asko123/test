@@ -15,3 +15,11 @@ MAX_FILE_SIZE_MB = 50
 SUPPORTED_FILE_TYPES = ["pdf", "json", "jsonl", "txt"]
 MAX_DOCUMENTS = 10
 
+# ReAct Agent Configuration
+ENABLE_AGENT_MODE = True  # Enable/disable agent mode feature
+AGENT_MAX_ITERATIONS = 10  # Maximum reasoning iterations for agent
+AGENT_COMPLEXITY_THRESHOLD = 60  # Complexity score (0-100) to trigger agent mode
+AGENT_TEMPERATURE = 0.2  # Temperature for agent (slightly higher for reasoning)
+SHOW_AGENT_REASONING = True  # Show agent reasoning trace in UI
+AGENT_DEFAULT_ENABLED = False  # Whether agent mode is enabled by default in UI
+

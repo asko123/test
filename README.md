@@ -1,6 +1,6 @@
 # Document Chat Bot with Knowledge Graph Enhancement
 
-A multi-document chatbot for querying PDF, JSON, JSONL, and text documents with advanced Knowledge Graph capabilities for improved response quality.
+A multi-document chatbot for querying PDF, JSON, JSONL, and text documents with advanced Knowledge Graph capabilities and intelligent ReAct agent for complex multi-step reasoning.
 
 ## Features
 
@@ -10,12 +10,24 @@ A multi-document chatbot for querying PDF, JSON, JSONL, and text documents with 
 - **Multiple LLM Models**: Gemini 2.5 Pro and Flash Lite
 - **Multi-Document Processing**: Handle up to 10 documents simultaneously
 
-###  Knowledge Graph Enhancement (NEW!)
+###  Knowledge Graph Enhancement
 - **Automatic Entity Extraction**: Identifies controls, risks, assets, policies, requirements, people, and standards
 - **Relationship Detection**: Discovers connections between entities (implements, mitigates, requires, etc.)
 - **Context-Aware Responses**: Leverages entity relationships for better, more connected answers
 - **Query Intent Analysis**: Automatically detects query type (list, explain, relationship, compliance, impact)
 - **Graph Statistics**: View entity and relationship metrics in real-time
+
+###  LangGraph ReAct Agent (NEW!)
+- **Intelligent Query Routing**: Automatically detects complex queries and routes to agent
+- **Multi-Step Reasoning**: Breaks down complex questions into sequential tool calls
+- **Tool-Based Analysis**: 9 specialized tools for KG operations and document search
+- **Self-Correcting**: Agent iterates and refines approach based on results
+- **Transparent Reasoning**: Optional display of agent's thinking process and tool usage
+- **Advanced Capabilities**: 
+  - Multi-hop relationship traversal
+  - Impact analysis across dependencies
+  - Compliance gap detection
+  - Comparative framework analysis
 
 ###  Extracted Entity Types
 - **CONTROL**: Security controls (AC-2, ISO-27001-A.9.2.1, etc.)
@@ -57,9 +69,10 @@ streamlit run app.py
 Then:
 1. Configure App ID and Environment in sidebar
 2. Enable Knowledge Graph Enhancement (recommended)
-3. Upload documents (PDF, JSON, JSONL, or TXT)
-4. Click "Process Documents" to build the knowledge graph
-5. Start chatting with enhanced context!
+3. **(Optional)** Enable Agent Mode for complex reasoning capabilities
+4. Upload documents (PDF, JSON, JSONL, or TXT)
+5. Click "Process Documents" to build the knowledge graph
+6. Start chatting - agent automatically engages for complex queries!
 
 ### Option 2: Jupyter Notebook (Continuous Chat)
 
@@ -120,15 +133,25 @@ DEFAULT_TEMPERATURE = 0
 ### LLM Integration
 - `llm_handler.py` - LLM interaction handler
 
-### Knowledge Graph (NEW!)
+### Knowledge Graph
 - `knowledge_graph.py` - Core KG module with entity/relationship extraction
 - `kg_retriever.py` - Enhanced retrieval system using KG
 - `test_kg.py` - KG test suite
+
+### ReAct Agent (NEW!)
+- `llm_adapter.py` - LangChain adapter for Goldman Sachs LLM
+- `agent_tools.py` - Tool definitions for agent (9 specialized tools)
+- `query_router.py` - Intelligent routing between simple and agent flows
+- `react_agent.py` - LangGraph ReAct agent implementation
+- `prompts.py` - Agent system prompts and instructions
+- `agent_state.py` - State and memory management
+- `test_agent.py` - Agent test suite
 
 ### Documentation
 - `README.md` - This file
 - `KG_IMPLEMENTATION_GUIDE.md` - Detailed KG implementation guide
 - `IMPLEMENTATION_SUMMARY.md` - Project implementation summary
+- `langgraph-react-integration.plan.md` - Agent integration plan
 
 ## Knowledge Graph Usage
 
@@ -170,6 +193,94 @@ All 7 tests should pass:
 - Query Context Retrieval
 - KG Retriever Integration
 - Contextual Prompt Building
+
+## ReAct Agent Usage
+
+### What is the ReAct Agent?
+
+The ReAct Agent is an intelligent reasoning system powered by LangGraph that can:
+- **Think step-by-step** through complex queries
+- **Use tools** to gather information from the knowledge graph
+- **Self-correct** by trying different approaches if initial results are insufficient
+- **Explain its reasoning** showing you how it arrived at an answer
+
+### When Does the Agent Activate?
+
+The system automatically routes queries to the agent based on complexity:
+
+**Simple Queries → Direct KG Retrieval:**
+- "What is AC-2?"
+- "List all controls"
+- "Show me high-severity risks"
+
+**Complex Queries → ReAct Agent:**
+- "How does AC-2 relate to ISO 27001 and NIST compliance?"
+- "What would be impacted if we remove control AC-2?"
+- "Which high-severity risks lack mitigation controls?"
+- "Compare controls across ISO 27001 and NIST frameworks"
+
+### Agent Tools
+
+The agent has access to 9 specialized tools:
+
+1. **search_entities** - Find entities by type and pattern
+2. **get_entity_details** - Get complete info about an entity
+3. **get_entity_relationships** - Discover connections
+4. **find_relationship_path** - Find how two entities connect
+5. **search_documents** - Search original document content
+6. **aggregate_entity_info** - Summarize multiple entities
+7. **detect_compliance_gaps** - Find missing controls/requirements
+8. **traverse_graph** - Deep graph exploration
+9. **query_kg_statistics** - Get graph metrics
+
+### Example: Agent in Action
+
+**Query:** "What would be impacted if we remove control AC-2?"
+
+**Agent Reasoning:**
+1. Searches for entity "AC-2" (uses `search_entities`)
+2. Gets all relationships for AC-2 (uses `get_entity_relationships`)
+3. Traverses dependency graph (uses `traverse_graph`)
+4. Aggregates impacted entities (uses `aggregate_entity_info`)
+5. Synthesizes comprehensive impact report
+
+**Response:** Detailed breakdown of:
+- Directly affected entities (risks, assets, requirements)
+- Downstream impacts (dependent controls, policies)
+- Compliance gaps that would result
+- Recommended mitigation strategies
+
+### Configuring the Agent
+
+Edit `config.py` to customize agent behavior:
+
+```python
+# Enable/disable agent mode
+ENABLE_AGENT_MODE = True
+
+# Complexity threshold (0-100) to trigger agent
+AGENT_COMPLEXITY_THRESHOLD = 60
+
+# Maximum reasoning iterations
+AGENT_MAX_ITERATIONS = 10
+
+# Show reasoning trace in UI
+SHOW_AGENT_REASONING = True
+```
+
+### Testing the Agent
+
+Run the agent test suite:
+```bash
+python test_agent.py
+```
+
+Tests include:
+- Query routing logic
+- Complexity scoring
+- Agent state management
+- Tool functionality
+- End-to-end integration
 
 ## Advanced Configuration
 
@@ -221,6 +332,9 @@ See `requirements.txt`:
 - pdfplumber>=0.10.0
 - networkx>=3.1 (for Knowledge Graph)
 - matplotlib>=3.7.0 (for visualizations)
+- langgraph>=0.0.20 (for ReAct Agent)
+- langchain>=0.1.0 (for agent tools)
+- langchain-core>=0.1.0 (for LLM integration)
 
 ## Additional Documentation
 

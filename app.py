@@ -1,6 +1,7 @@
 """
 Streamlit App for Document Chat Bot
 Multi-document chat interface for PDF documents
+Enhanced with LangGraph ReAct Agent capabilities
 """
 
 import streamlit as st
@@ -13,6 +14,9 @@ import json
 from pdf_extractor import PDFExtractor
 from json_extractor import JSONExtractor
 from kg_retriever import KGRetriever
+from query_router import QueryRouter
+from react_agent import AgentOrchestrator
+from agent_state import AgentState
 
 # Page configuration
 st.set_page_config(
@@ -33,6 +37,18 @@ if 'kg_retriever' not in st.session_state:
     st.session_state.kg_retriever = None
 if 'use_kg' not in st.session_state:
     st.session_state.use_kg = True
+
+# Agent-related session state
+if 'enable_agent' not in st.session_state:
+    st.session_state.enable_agent = config.AGENT_DEFAULT_ENABLED
+if 'agent_orchestrator' not in st.session_state:
+    st.session_state.agent_orchestrator = None
+if 'query_router' not in st.session_state:
+    st.session_state.query_router = None
+if 'agent_state' not in st.session_state:
+    st.session_state.agent_state = None
+if 'show_agent_trace' not in st.session_state:
+    st.session_state.show_agent_trace = config.SHOW_AGENT_REASONING
 
 # Custom CSS
 st.markdown("""
@@ -149,6 +165,101 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Agent Settings
+    if config.ENABLE_AGENT_MODE:
+        st.subheader("ReAct Agent")
+        enable_agent = st.checkbox(
+            "Enable Agent Mode",
+            value=st.session_state.enable_agent,
+            help="Use LangGraph ReAct agent for complex multi-step reasoning. Agent automatically engages for complex queries."
+        )
+        st.session_state.enable_agent = enable_agent
+        
+        if enable_agent:
+            show_agent_trace = st.checkbox(
+                "Show Reasoning Trace",
+                value=st.session_state.show_agent_trace,
+                help="Display the agent's reasoning steps and tool usage"
+            )
+            st.session_state.show_agent_trace = show_agent_trace
+            
+            # Agent Process Flow Diagram
+            with st.expander("How Agent-LLM Interaction Works"):
+                st.markdown("""
+                ### Agent-LLM Interaction Flow
+                
+                The agent uses your **same LLM multiple times** in an iterative pattern:
+                
+                ```
+                USER QUERY
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ AGENT STARTS                        │
+                │ (powered by your LLM)               │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ LLM CALL #1: Planning               │
+                │ "What should I do first?"           │
+                │ → "Use search_entities tool"        │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ TOOL EXECUTION                      │
+                │ search_entities(pattern="AC-2")     │
+                │ → Returns entity data               │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ LLM CALL #2: Interpret              │
+                │ "Found AC-2. What next?"            │
+                │ → "Use get_entity_relationships"    │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ TOOL EXECUTION                      │
+                │ get_entity_relationships("AC-2")    │
+                │ → Returns connected entities        │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ LLM CALL #3: Continue               │
+                │ "Need more details. Use traverse"   │
+                │ → "Use traverse_graph tool"         │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ TOOL EXECUTION                      │
+                │ traverse_graph(depth=2)             │
+                │ → Returns dependency tree           │
+                └─────────────────────────────────────┘
+                    ↓
+                ┌─────────────────────────────────────┐
+                │ LLM CALL #4: Synthesize             │
+                │ "I have everything. Final answer:"  │
+                │ → Comprehensive response            │
+                └─────────────────────────────────────┘
+                    ↓
+                RESPONSE TO USER
+                ```
+                
+                **Key Points:**
+                - Same LLM used throughout (4-10+ calls per query)
+                - Agent = LLM + Tools + Iterative Reasoning
+                - Each LLM call: Plan → Execute Tool → Interpret → Repeat
+                - Final LLM call synthesizes all gathered information
+                
+                **Simple Flow:** 1 LLM call  
+                **Agent Flow:** 4-10+ LLM calls (more thorough!)
+                """)
+            
+            if st.session_state.agent_state:
+                with st.expander("View Agent Statistics"):
+                    stats = st.session_state.agent_state.get_statistics()
+                    st.json(stats)
+        
+        st.markdown("---")
+    
     # Document Upload
     st.subheader("Upload Documents")
     uploaded_files = st.file_uploader(
@@ -248,12 +359,40 @@ with st.sidebar:
                     )
                     st.session_state.llm = LLM.init(config=llm_config)
                     
+                    # Initialize Agent if enabled
+                    if config.ENABLE_AGENT_MODE and st.session_state.enable_agent:
+                        if st.session_state.kg_retriever:
+                            with st.spinner("Initializing ReAct Agent..."):
+                                # Create query router
+                                st.session_state.query_router = QueryRouter(
+                                    complexity_threshold=config.AGENT_COMPLEXITY_THRESHOLD
+                                )
+                                
+                                # Create agent orchestrator
+                                agent_orchestrator = AgentOrchestrator(
+                                    app_id=app_id,
+                                    env=env,
+                                    model_name=model_name,
+                                    temperature=config.AGENT_TEMPERATURE
+                                )
+                                agent_orchestrator.initialize(
+                                    kg_retriever=st.session_state.kg_retriever,
+                                    original_documents=st.session_state.extracted_text
+                                )
+                                st.session_state.agent_orchestrator = agent_orchestrator
+                                
+                                # Create agent state for session tracking
+                                st.session_state.agent_state = AgentState()
+                    
                     # Store file info
                     st.session_state.uploaded_files_info = [
                         {"name": f.name, "size": f.size} for f in uploaded_files
                     ]
                     
-                    st.success(f"Successfully processed {len(uploaded_files)} documents!")
+                    success_msg = f"Successfully processed {len(uploaded_files)} documents!"
+                    if config.ENABLE_AGENT_MODE and st.session_state.agent_orchestrator:
+                        success_msg += " Agent mode ready!"
+                    st.success(success_msg)
                     st.session_state.chat_history = []  # Reset chat history
                     st.rerun()  # Refresh to show chat interface
                     
@@ -298,6 +437,12 @@ if not st.session_state.extracted_text:
     - Identifies relationships between entities
     - Provides better context and linkage for more accurate responses
     - Enables comprehensive analysis of connected information
+    
+    **ReAct Agent Mode:**
+    - Enable in sidebar for complex multi-step reasoning
+    - Agent automatically activates for complex queries
+    - Uses your LLM iteratively with 9 specialized tools
+    - View "How Agent-LLM Interaction Works" in sidebar for details
     """)
 else:
     # Show ready message with KG stats
@@ -319,9 +464,17 @@ else:
         
         # Response message - formatted
         formatted_response = message['response'].strip()
+        
+        # Add mode badge if using agent
+        mode_badge = ""
+        if "Agent Reasoning:" in formatted_response:
+            mode_badge = '<span style="background-color: #4caf50; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; margin-bottom: 10px; display: inline-block;">Agent Mode</span><br><br>'
+        elif config.ENABLE_AGENT_MODE and st.session_state.enable_agent:
+            mode_badge = '<span style="background-color: #2196f3; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; margin-bottom: 10px; display: inline-block;">Simple Mode</span><br><br>'
+        
         st.markdown(f"""
         <div class="chat-message assistant-message">
-            {formatted_response}
+            {mode_badge}{formatted_response}
         </div>
         """, unsafe_allow_html=True)
     
@@ -338,9 +491,41 @@ else:
         
         with st.spinner("Generating response..."):
             try:
+                # Determine if we should use agent
+                use_agent_for_query = False
+                routing_info = None
+                
+                if (config.ENABLE_AGENT_MODE and 
+                    st.session_state.enable_agent and 
+                    st.session_state.agent_orchestrator and
+                    st.session_state.query_router):
+                    
+                    use_agent_for_query, routing_info = st.session_state.query_router.should_use_agent(prompt)
+                
+                # Route to agent or simple flow
+                if use_agent_for_query:
+                    # Use ReAct Agent
+                    with st.spinner(f"Agent analyzing (complexity: {routing_info['complexity_score']})..."):
+                        agent_result = st.session_state.agent_orchestrator.query(
+                            query=prompt,
+                            include_trace=st.session_state.show_agent_trace,
+                            state=st.session_state.agent_state
+                        )
+                        
+                        actual_response = agent_result.get('response', 'No response generated')
+                        
+                        # Add routing info and trace if enabled
+                        if st.session_state.show_agent_trace and agent_result.get('trace'):
+                            trace_info = f"\n\n---\n**Agent Reasoning:**\n"
+                            trace_info += f"- Query Type: {routing_info['query_type']}\n"
+                            trace_info += f"- Complexity Score: {routing_info['complexity_score']}/100\n"
+                            trace_info += f"- Iterations: {agent_result.get('iterations', 'N/A')}\n"
+                            trace_info += f"- Routing Reason: {routing_info['routing_reason']}\n"
+                            actual_response += trace_info
+                
                 # Build prompt based on whether KG is enabled
-                if st.session_state.use_kg and st.session_state.kg_retriever:
-                    # Use Knowledge Graph enhanced prompt
+                elif st.session_state.use_kg and st.session_state.kg_retriever:
+                    # Use Knowledge Graph enhanced prompt (simple flow)
                     full_prompt = st.session_state.kg_retriever.build_contextual_prompt(
                         prompt, 
                         st.session_state.extracted_text
@@ -382,50 +567,50 @@ Instructions:
 
 Answer:"""
                 
-                # Get response from LLM
-                response = st.session_state.llm.invoke(full_prompt)
-                
-                # Extract actual content from response
-                actual_response = None
-                
-                # Try different response formats
-                try:
-                    # Method 1: Check for content attribute
-                    if hasattr(response, 'content'):
-                        actual_response = response.content
-                    # Method 2: Check if it's a dict with Response.content
-                    elif isinstance(response, dict):
-                        if 'Response' in response and isinstance(response['Response'], dict):
-                            actual_response = response['Response'].get('content', None)
-                        elif 'content' in response:
-                            actual_response = response['content']
-                        else:
-                            # Try to find any key that might contain the answer
-                            for key in ['answer', 'text', 'message', 'result']:
-                                if key in response:
-                                    actual_response = response[key]
-                                    break
-                    # Method 3: It's already a string
-                    elif isinstance(response, str):
-                        actual_response = response
+                # Only invoke LLM if not using agent (agent already provided response)
+                if not use_agent_for_query:
+                    # Get response from LLM
+                    response = st.session_state.llm.invoke(full_prompt)
                     
-                    # If still None, convert to string
-                    if actual_response is None:
-                        actual_response = str(response)
+                    # Extract actual content from response
+                    actual_response = None
                     
-                    # Clean up escape sequences
-                    if isinstance(actual_response, str):
-                        actual_response = actual_response.replace('\\n\\n', '\n\n')
-                        actual_response = actual_response.replace('\\n', '\n')
-                        actual_response = actual_response.replace('\\t', '\t')
-                        actual_response = actual_response.strip()
+                    # Try different response formats
+                    try:
+                        # Method 1: Check for content attribute
+                        if hasattr(response, 'content'):
+                            actual_response = response.content
+                        # Method 2: Check if it's a dict with Response.content
+                        elif isinstance(response, dict):
+                            if 'Response' in response and isinstance(response['Response'], dict):
+                                actual_response = response['Response'].get('content', None)
+                            elif 'content' in response:
+                                actual_response = response['content']
+                            else:
+                                # Try to find any key that might contain the answer
+                                for key in ['answer', 'text', 'message', 'result']:
+                                    if key in response:
+                                        actual_response = response[key]
+                                        break
+                        # Method 3: It's already a string
+                        elif isinstance(response, str):
+                            actual_response = response
+                        
+                        # If still None, convert to string
+                        if actual_response is None:
+                            actual_response = str(response)
+                        
+                            # Clean up escape sequences
+                            actual_response = actual_response.replace('\\n', '\n')
+                            actual_response = actual_response.replace('\\t', '\t')
+                            actual_response = actual_response.strip()
                     
-                except Exception as parse_error:
-                    actual_response = f"[ERROR] Failed to parse response: {str(parse_error)}\n\nRaw response: {str(response)[:500]}"
-                
-                # Final check
-                if not actual_response or actual_response.strip() == "":
-                    actual_response = f"[ERROR] Empty response received. Response type: {type(response).__name__}"
+                    except Exception as parse_error:
+                        actual_response = f"[ERROR] Failed to parse response: {str(parse_error)}\n\nRaw response: {str(response)[:500]}"
+                    
+                    # Final check
+                    if not actual_response or actual_response.strip() == "":
+                        actual_response = f"[ERROR] Empty response received. Response type: {type(response).__name__}"
                 
                 # Update chat history with actual response
                 st.session_state.chat_history[-1]["response"] = actual_response
