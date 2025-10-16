@@ -4,19 +4,41 @@ Multi-document chat interface for PDF documents
 Enhanced with LangGraph ReAct Agent capabilities
 """
 
+import sys
+import os
+from pathlib import Path
+
+# Ensure current directory is in Python path for imports
+current_dir = Path(__file__).parent.absolute()
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
+
 import streamlit as st
 from goldmansachs.awm_genai import LLM, LLMConfig
 import config
 from datetime import datetime
 import tempfile
-import os
 import json
 from pdf_extractor import PDFExtractor
 from json_extractor import JSONExtractor
 from kg_retriever import KGRetriever
-from query_router import QueryRouter
-from react_agent import AgentOrchestrator
-from agent_state import AgentState
+
+# Import agent modules with error handling
+try:
+    from query_router import QueryRouter
+    from react_agent import AgentOrchestrator
+    from agent_state import AgentState
+    AGENT_MODULES_AVAILABLE = True
+except ImportError as e:
+    AGENT_MODULES_AVAILABLE = False
+    AGENT_IMPORT_ERROR = str(e)
+    print(f"[WARNING] Agent modules not available: {e}")
+    print(f"[INFO] Current directory: {current_dir}")
+    print(f"[INFO] Python path: {sys.path[:3]}")
+    # Create dummy classes to prevent errors
+    QueryRouter = None
+    AgentOrchestrator = None
+    AgentState = None
 
 # Page configuration
 st.set_page_config(
@@ -168,11 +190,34 @@ with st.sidebar:
     # Agent Settings
     if config.ENABLE_AGENT_MODE:
         st.subheader("ReAct Agent")
-        enable_agent = st.checkbox(
-            "Enable Agent Mode",
-            value=st.session_state.enable_agent,
-            help="Use LangGraph ReAct agent for complex multi-step reasoning. Agent automatically engages for complex queries."
-        )
+        
+        # Check if agent modules are available
+        if not AGENT_MODULES_AVAILABLE:
+            st.error(f"""
+            **Agent modules not available**
+            
+            Error: {AGENT_IMPORT_ERROR}
+            
+            **Troubleshooting:**
+            1. Ensure all agent files exist in: `{current_dir}`
+            2. Required files:
+               - `query_router.py`
+               - `react_agent.py`
+               - `agent_state.py`
+               - `llm_adapter.py`
+               - `agent_tools.py`
+               - `prompts.py`
+            3. Install dependencies: `pip install langgraph langchain langchain-core`
+            4. Restart the Streamlit app
+            """)
+            enable_agent = False
+        else:
+            enable_agent = st.checkbox(
+                "Enable Agent Mode",
+                value=st.session_state.enable_agent,
+                help="Use LangGraph ReAct agent for complex multi-step reasoning. Agent automatically engages for complex queries."
+            )
+        
         st.session_state.enable_agent = enable_agent
         
         if enable_agent:
@@ -360,29 +405,34 @@ with st.sidebar:
                     st.session_state.llm = LLM.init(config=llm_config)
                     
                     # Initialize Agent if enabled
-                    if config.ENABLE_AGENT_MODE and st.session_state.enable_agent:
+                    if config.ENABLE_AGENT_MODE and st.session_state.enable_agent and AGENT_MODULES_AVAILABLE:
                         if st.session_state.kg_retriever:
                             with st.spinner("Initializing ReAct Agent..."):
-                                # Create query router
-                                st.session_state.query_router = QueryRouter(
-                                    complexity_threshold=config.AGENT_COMPLEXITY_THRESHOLD
-                                )
-                                
-                                # Create agent orchestrator
-                                agent_orchestrator = AgentOrchestrator(
-                                    app_id=app_id,
-                                    env=env,
-                                    model_name=model_name,
-                                    temperature=config.AGENT_TEMPERATURE
-                                )
-                                agent_orchestrator.initialize(
-                                    kg_retriever=st.session_state.kg_retriever,
-                                    original_documents=st.session_state.extracted_text
-                                )
-                                st.session_state.agent_orchestrator = agent_orchestrator
-                                
-                                # Create agent state for session tracking
-                                st.session_state.agent_state = AgentState()
+                                try:
+                                    # Create query router
+                                    st.session_state.query_router = QueryRouter(
+                                        complexity_threshold=config.AGENT_COMPLEXITY_THRESHOLD
+                                    )
+                                    
+                                    # Create agent orchestrator
+                                    agent_orchestrator = AgentOrchestrator(
+                                        app_id=app_id,
+                                        env=env,
+                                        model_name=model_name,
+                                        temperature=config.AGENT_TEMPERATURE
+                                    )
+                                    agent_orchestrator.initialize(
+                                        kg_retriever=st.session_state.kg_retriever,
+                                        original_documents=st.session_state.extracted_text
+                                    )
+                                    st.session_state.agent_orchestrator = agent_orchestrator
+                                    
+                                    # Create agent state for session tracking
+                                    st.session_state.agent_state = AgentState()
+                                except Exception as e:
+                                    st.error(f"Failed to initialize agent: {str(e)}")
+                                    st.info(f"Current directory: {current_dir}")
+                                    st.session_state.agent_orchestrator = None
                     
                     # Store file info
                     st.session_state.uploaded_files_info = [
@@ -496,6 +546,7 @@ else:
                 routing_info = None
                 
                 if (config.ENABLE_AGENT_MODE and 
+                    AGENT_MODULES_AVAILABLE and
                     st.session_state.enable_agent and 
                     st.session_state.agent_orchestrator and
                     st.session_state.query_router):
