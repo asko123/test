@@ -271,48 +271,48 @@ with st.sidebar:
                                     st.session_state.enable_agent and 
                                     AGENT_MODULES_AVAILABLE and 
                                     not st.session_state.agent_orchestrator):
-                                
-                                with st.spinner("Initializing agent with Vespa..."):
-                                    try:
-                                        # Create minimal KG for agent
-                                        if not st.session_state.kg_retriever:
-                                            kg_retriever = KGRetriever()
-                                            st.session_state.kg_retriever = kg_retriever
-                                        
-                                        # Create query router
-                                        st.session_state.query_router = QueryRouter(
-                                            complexity_threshold=config.AGENT_COMPLEXITY_THRESHOLD
-                                        )
-                                        
-                                        # Initialize LLM if not already done
-                                        if not st.session_state.llm:
-                                            llm_config = LLMConfig(
+                                    
+                                    with st.spinner("Initializing agent with Vespa..."):
+                                        try:
+                                            # Create minimal KG for agent
+                                            if not st.session_state.kg_retriever:
+                                                kg_retriever = KGRetriever()
+                                                st.session_state.kg_retriever = kg_retriever
+                                            
+                                            # Create query router
+                                            st.session_state.query_router = QueryRouter(
+                                                complexity_threshold=config.AGENT_COMPLEXITY_THRESHOLD
+                                            )
+                                            
+                                            # Initialize LLM if not already done
+                                            if not st.session_state.llm:
+                                                llm_config = LLMConfig(
+                                                    app_id=app_id,
+                                                    env=env,
+                                                    model_name=model_name,
+                                                    temperature=temperature,
+                                                    log_level=log_level,
+                                                )
+                                                st.session_state.llm = LLM.init(config=llm_config)
+                                            
+                                            # Create agent orchestrator
+                                            agent_orchestrator = AgentOrchestrator(
                                                 app_id=app_id,
                                                 env=env,
                                                 model_name=model_name,
-                                                temperature=temperature,
-                                                log_level=log_level,
+                                                temperature=config.AGENT_TEMPERATURE
                                             )
-                                            st.session_state.llm = LLM.init(config=llm_config)
-                                        
-                                        # Create agent orchestrator
-                                        agent_orchestrator = AgentOrchestrator(
-                                            app_id=app_id,
-                                            env=env,
-                                            model_name=model_name,
-                                            temperature=config.AGENT_TEMPERATURE
-                                        )
-                                        agent_orchestrator.initialize(
-                                            kg_retriever=st.session_state.kg_retriever,
-                                            original_documents="",  # Empty for Vespa-only mode
-                                            vespa_wrapper=st.session_state.vespa_wrapper
-                                        )
-                                        st.session_state.agent_orchestrator = agent_orchestrator
-                                        st.session_state.agent_state = AgentState()
-                                        
-                                        st.success("Agent initialized with Vespa!")
-                                    except Exception as e:
-                                        st.error(f"Failed to initialize agent: {str(e)}")
+                                            agent_orchestrator.initialize(
+                                                kg_retriever=st.session_state.kg_retriever,
+                                                original_documents="",  # Empty for Vespa-only mode
+                                                vespa_wrapper=st.session_state.vespa_wrapper
+                                            )
+                                            st.session_state.agent_orchestrator = agent_orchestrator
+                                            st.session_state.agent_state = AgentState()
+                                            
+                                            st.success("Agent initialized with Vespa!")
+                                        except Exception as e:
+                                            st.error(f"Failed to initialize agent: {str(e)}")
                             else:
                                 # Test failed
                                 st.error(f"**Vespa Connection Test Failed**\n\n{test_result.get('error', 'Unknown error')}")
