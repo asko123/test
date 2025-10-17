@@ -29,4 +29,6 @@ VESPA_SCHEMA_ID = "tech_risk_ai"  # Vespa schema ID
 VESPA_ENV = "uat"  # Vespa environment (dev, uat, or prod)
 VESPA_TOP_K = 10  # Number of results to retrieve from Vespa
 VESPA_AS_FALLBACK = True  # Use Vespa when no documents uploaded
+VESPA_GSSSO = None  # Optional GSSO token (set if required)
+VESPA_API_KEY = None  # Optional API key (set if required)
 

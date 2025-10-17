@@ -16,7 +16,9 @@ class VespaSearchWrapper:
     def __init__(
         self,
         schema_id: str = "tech_risk_ai",
-        env: str = "uat"
+        env: str = "uat",
+        gssso: Optional[str] = None,
+        x_api_key: Optional[str] = None
     ):
         """
         Initialize Vespa search wrapper.
@@ -24,9 +26,13 @@ class VespaSearchWrapper:
         Args:
             schema_id: Vespa schema identifier
             env: Environment (dev, uat, or prod)
+            gssso: Optional GSSO token for authentication
+            x_api_key: Optional API key for authentication
         """
         self.schema_id = schema_id
         self.env = env
+        self.gssso = gssso
+        self.x_api_key = x_api_key
         self.vector_store = None
         self._initialize()
     
@@ -74,11 +80,26 @@ class VespaSearchWrapper:
         
         try:
             print(f"[DEBUG] Vespa search: query='{query[:50]}...', top_k={top_k}, filters={filters}")
+            print(f"[DEBUG] Auth: gssso={'***' if self.gssso else 'None'}, x_api_key={'***' if self.x_api_key else 'None'}")
             
+            # Build search parameters
+            search_params = {
+                'query': query,
+                'top_k': top_k,
+                'page': page
+            }
+            
+            # Add auth parameters if provided
+            if self.gssso:
+                search_params['gssso'] = self.gssso
+            if self.x_api_key:
+                search_params['x_api_key'] = self.x_api_key
+            
+            # Add filters if provided
             if filters:
-                result = self.vector_store.search(query, filters=filters)
-            else:
-                result = self.vector_store.search(query, top_k=top_k, page=page)
+                search_params['filters'] = filters
+            
+            result = self.vector_store.search(**search_params)
             
             print(f"[DEBUG] Vespa search successful, results: {type(result)}")
             
@@ -190,8 +211,19 @@ class VespaSearchWrapper:
             }
         
         try:
-            # Try a simple test search
-            test_result = self.vector_store.search("test", top_k=1)
+            # Try a simple test search with auth parameters
+            search_params = {
+                'query': "test",
+                'top_k': 1
+            }
+            
+            if self.gssso:
+                search_params['gssso'] = self.gssso
+            if self.x_api_key:
+                search_params['x_api_key'] = self.x_api_key
+            
+            test_result = self.vector_store.search(**search_params)
+            
             return {
                 'success': True,
                 'message': 'Connection successful',
@@ -230,7 +262,9 @@ class VespaSearchWrapper:
 
 def create_vespa_wrapper(
     schema_id: str = "tech_risk_ai",
-    env: str = "uat"
+    env: str = "uat",
+    gssso: Optional[str] = None,
+    x_api_key: Optional[str] = None
 ) -> Optional[VespaSearchWrapper]:
     """
     Factory function to create Vespa wrapper with error handling.
@@ -238,12 +272,19 @@ def create_vespa_wrapper(
     Args:
         schema_id: Vespa schema ID
         env: Environment
+        gssso: Optional GSSO token for authentication
+        x_api_key: Optional API key for authentication
         
     Returns:
         VespaSearchWrapper instance or None if unavailable
     """
     try:
-        return VespaSearchWrapper(schema_id=schema_id, env=env)
+        return VespaSearchWrapper(
+            schema_id=schema_id,
+            env=env,
+            gssso=gssso,
+            x_api_key=x_api_key
+        )
     except Exception as e:
         print(f"[WARNING] Vespa not available: {e}")
         return None
