@@ -27,6 +27,10 @@ class LangChainLLMAdapter(BaseChatModel):
     log_level: str = "DEBUG"
     _llm: Any = None
     
+    class Config:
+        """Pydantic configuration."""
+        arbitrary_types_allowed = True
+    
     def __init__(
         self,
         app_id: str,
@@ -37,12 +41,15 @@ class LangChainLLMAdapter(BaseChatModel):
         **kwargs
     ):
         """Initialize the LLM adapter."""
-        super().__init__(**kwargs)
-        self.app_id = app_id
-        self.env = env
-        self.model_name = model_name
-        self.temperature = temperature
-        self.log_level = log_level
+        # Initialize parent with all fields for Pydantic v2
+        super().__init__(
+            app_id=app_id,
+            env=env,
+            model_name=model_name,
+            temperature=temperature,
+            log_level=log_level,
+            **kwargs
+        )
         
         # Initialize the Goldman Sachs LLM
         config = LLMConfig(
