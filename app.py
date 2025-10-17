@@ -242,14 +242,18 @@ with st.sidebar:
                             env=vespa_env
                         )
                         if vespa_wrapper and vespa_wrapper.is_available():
-                            st.session_state.vespa_wrapper = vespa_wrapper
-                            st.success(f"Connected to Vespa: {vespa_schema_id} ({vespa_env})")
+                            # Test connection
+                            test_result = vespa_wrapper.test_connection()
                             
-                            # Initialize agent with Vespa if enabled and not already initialized
-                            if (config.ENABLE_AGENT_MODE and 
-                                st.session_state.enable_agent and 
-                                AGENT_MODULES_AVAILABLE and 
-                                not st.session_state.agent_orchestrator):
+                            if test_result.get('success'):
+                                st.session_state.vespa_wrapper = vespa_wrapper
+                                st.success(f"Connected to Vespa: {vespa_schema_id} ({vespa_env})")
+                                
+                                # Initialize agent with Vespa if enabled and not already initialized
+                                if (config.ENABLE_AGENT_MODE and 
+                                    st.session_state.enable_agent and 
+                                    AGENT_MODULES_AVAILABLE and 
+                                    not st.session_state.agent_orchestrator):
                                 
                                 with st.spinner("Initializing agent with Vespa..."):
                                     try:
@@ -292,10 +296,17 @@ with st.sidebar:
                                         st.success("Agent initialized with Vespa!")
                                     except Exception as e:
                                         st.error(f"Failed to initialize agent: {str(e)}")
+                            else:
+                                # Test failed
+                                st.error(f"**Vespa Connection Test Failed**\n\n{test_result.get('error', 'Unknown error')}")
+                                if test_result.get('suggestion'):
+                                    st.warning(test_result['suggestion'])
+                                st.session_state.vespa_wrapper = None
                         else:
-                            st.error("Failed to connect to Vespa")
+                            st.error("Failed to create Vespa wrapper")
                     except Exception as e:
                         st.error(f"Vespa connection error: {str(e)}")
+                        st.info("Common issues: Invalid schema ID, wrong environment, or authentication problems")
             
             if st.session_state.vespa_wrapper:
                 info = st.session_state.vespa_wrapper.get_schema_info()

@@ -35,12 +35,14 @@ class VespaSearchWrapper:
         try:
             from goldmansachs.awm_genai import VectorStore
             self.vector_store = VectorStore(schema_id=self.schema_id, env=self.env)
+            print(f"[INFO] Vespa initialized: schema={self.schema_id}, env={self.env}")
         except ImportError as e:
             raise ImportError(
                 f"VectorStore not available: {e}. "
                 "Ensure goldmansachs.awm_genai package is installed."
             )
         except Exception as e:
+            print(f"[ERROR] Vespa initialization failed: {e}")
             raise RuntimeError(f"Failed to initialize Vespa connection: {e}")
     
     def search(
@@ -66,14 +68,19 @@ class VespaSearchWrapper:
             return {
                 'success': False,
                 'error': 'Vespa vector store not initialized',
-                'results': []
+                'results': [],
+                'error_type': 'initialization_error'
             }
         
         try:
+            print(f"[DEBUG] Vespa search: query='{query[:50]}...', top_k={top_k}, filters={filters}")
+            
             if filters:
                 result = self.vector_store.search(query, filters=filters)
             else:
                 result = self.vector_store.search(query, top_k=top_k, page=page)
+            
+            print(f"[DEBUG] Vespa search successful, results: {type(result)}")
             
             return {
                 'success': True,
@@ -83,10 +90,38 @@ class VespaSearchWrapper:
             }
         
         except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            
+            print(f"[ERROR] Vespa search failed: {error_type}: {error_msg}")
+            
+            # Provide helpful error messages based on error type
+            if "500" in error_msg or "Internal Server Error" in error_msg:
+                helpful_msg = (
+                    f"Vespa 500 error - Possible causes:\n"
+                    f"1. Schema '{self.schema_id}' may not exist in '{self.env}' environment\n"
+                    f"2. Query format may be incompatible with schema\n"
+                    f"3. Authentication/permissions issue\n"
+                    f"4. Vespa service may be down\n"
+                    f"Suggested fixes:\n"
+                    f"- Verify schema ID is correct: '{self.schema_id}'\n"
+                    f"- Try different environment (dev/uat/prod)\n"
+                    f"- Check Vespa service status\n"
+                    f"- Simplify your query"
+                )
+            elif "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:
+                helpful_msg = "Authentication error - Check your credentials and permissions"
+            elif "404" in error_msg:
+                helpful_msg = f"Schema '{self.schema_id}' not found in '{self.env}' environment"
+            else:
+                helpful_msg = error_msg
+            
             return {
                 'success': False,
-                'error': str(e),
-                'results': []
+                'error': helpful_msg,
+                'error_type': error_type,
+                'results': [],
+                'query': query
             }
     
     def format_results_for_llm(self, search_result: Dict[str, Any]) -> str:
@@ -100,7 +135,8 @@ class VespaSearchWrapper:
             Formatted string for LLM
         """
         if not search_result.get('success'):
-            return f"Search failed: {search_result.get('error', 'Unknown error')}"
+            error_msg = search_result.get('error', 'Unknown error')
+            return f"=== VESPA SEARCH ERROR ===\n\n{error_msg}\n\n" + "="*50
         
         results = search_result.get('results', [])
         
@@ -139,6 +175,49 @@ class VespaSearchWrapper:
     def is_available(self) -> bool:
         """Check if Vespa is available and connected."""
         return self.vector_store is not None
+    
+    def test_connection(self) -> Dict[str, Any]:
+        """
+        Test Vespa connection with a simple query.
+        
+        Returns:
+            Dictionary with connection test results
+        """
+        if not self.vector_store:
+            return {
+                'success': False,
+                'error': 'Vector store not initialized'
+            }
+        
+        try:
+            # Try a simple test search
+            test_result = self.vector_store.search("test", top_k=1)
+            return {
+                'success': True,
+                'message': 'Connection successful',
+                'schema_id': self.schema_id,
+                'env': self.env
+            }
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Parse error for helpful feedback
+            if "500" in error_msg:
+                suggestion = f"Schema '{self.schema_id}' may not exist in '{self.env}'. Try: 'dev', 'uat', or 'prod'"
+            elif "401" in error_msg or "403" in error_msg:
+                suggestion = "Authentication issue - check your credentials"
+            elif "404" in error_msg:
+                suggestion = f"Schema '{self.schema_id}' not found - verify the schema name"
+            else:
+                suggestion = "Check Vespa service status and schema configuration"
+            
+            return {
+                'success': False,
+                'error': error_msg,
+                'suggestion': suggestion,
+                'schema_id': self.schema_id,
+                'env': self.env
+            }
     
     def get_schema_info(self) -> Dict[str, Any]:
         """Get information about the Vespa schema."""
