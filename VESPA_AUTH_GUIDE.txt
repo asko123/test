@@ -1,0 +1,105 @@
+VESPA AUTHENTICATION SETUP
+==========================
+
+If you're getting 500 errors, it's likely authentication-related.
+
+STREAMLIT APP
+-------------
+
+1. In sidebar, under "Vespa Vector Store":
+   - Schema ID: tech_risk_ai
+   - Environment: uat (or dev/prod)
+   - GSSSO Token: [Paste your GSSSO token here]
+   - API Key: [If you have one, paste here]
+
+2. Click "Connect to Vespa"
+
+3. If connection test succeeds, you'll see:
+   "Connected to Vespa: tech_risk_ai (uat)"
+
+4. If it fails, you'll see specific error and suggestion
+
+
+JUPYTER NOTEBOOK
+----------------
+
+1. In Cell 5, enter your credentials:
+   vespa_gssso_input.value = "your_gssso_token_here"
+   vespa_api_key_input.value = "your_api_key_here"  # if needed
+
+2. Run Cell 15 (this connects to Vespa)
+
+3. Look for: "Vespa connected: tech_risk_ai (uat)"
+
+4. Run Cell 17 to start chatting
+
+
+HOW TO GET YOUR GSSSO TOKEN
+---------------------------
+
+Method 1: From Browser
+- Open browser developer tools (F12)
+- Go to a Goldman Sachs internal site
+- Network tab → Headers → Look for "gssso" cookie
+- Copy the value
+
+Method 2: From CLI
+- Check your environment variables
+- Look for GSSSO or similar auth tokens
+
+Method 3: Contact Admin
+- Ask your IT team for the Vespa authentication token
+
+
+WORKFLOW
+--------
+
+After uploading files in notebook:
+1. Upload files in Cell 9 → See "[SUCCESS] Successfully extracted text"
+2. Run Cell 15 → Initializes KG, Vespa, and Agent
+3. Run Cell 17 → Chat interface starts
+4. Type your questions
+
+Without files (Vespa only):
+1. Skip Cell 9 (don't upload)
+2. Run Cell 15 → Connects to Vespa, initializes agent
+3. Run Cell 17 → Chat with Vespa
+4. Type your questions
+
+
+TROUBLESHOOTING
+---------------
+
+Issue: "500 Internal Server Error"
+Fix: Add GSSSO token in the authentication field
+
+Issue: "Chat doesn't appear after upload"
+Fix: Make sure you run Cell 15 AFTER uploading files in Cell 9
+
+Issue: "401 Unauthorized"
+Fix: Check your GSSSO token is valid and not expired
+
+Issue: "404 Not Found"
+Fix: Verify schema ID 'tech_risk_ai' exists in your environment
+
+
+DEBUG LOGGING
+-------------
+
+When you search, you'll see:
+[DEBUG] Vespa search: query='...', top_k=10, filters=None
+[DEBUG] Using ranking_profile=dense, gssso=***
+[DEBUG] Vespa search successful
+
+Or on error:
+[ERROR] Vespa search failed: HTTPError: 500 Internal Server Error
+[Then helpful suggestions appear]
+
+
+TESTING CONNECTION
+-----------------
+
+After connecting to Vespa, the app automatically tests with a simple query.
+If this test passes, your authentication is working!
+If it fails, you'll see exactly what's wrong.
+
