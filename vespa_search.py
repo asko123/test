@@ -85,17 +85,21 @@ class VespaSearchWrapper:
             print(f"[DEBUG] Vespa search: query='{query[:50]}...', top_k={top_k}, filters={filters}")
             print(f"[DEBUG] Using ranking_profile={self.ranking_profile}, gssso={'***' if self.gssso_token else 'None'}")
             
-            # Build search parameters
+            # Build search parameters - use exact parameter names from Vespa API
             search_params = {
                 'query': query,
                 'top_k': top_k,
-                'page': page,
-                'ranking_profile': self.ranking_profile
+                'page': page
             }
+            
+            # Add optional parameters
+            if self.ranking_profile:
+                search_params['ranking_profile'] = self.ranking_profile
             
             if filters:
                 search_params['filters'] = filters
             
+            # Add authentication - use exact parameter names
             if self.gssso_token:
                 search_params['gssso'] = self.gssso_token
             
@@ -215,13 +219,16 @@ class VespaSearchWrapper:
             }
         
         try:
-            # Try a simple test search with auth params
+            # Try a simple test search with auth params - use exact Vespa API parameter names
             search_params = {
                 'query': 'test',
-                'top_k': 1,
-                'ranking_profile': self.ranking_profile
+                'top_k': 1
             }
             
+            if self.ranking_profile:
+                search_params['ranking_profile'] = self.ranking_profile
+            
+            # Add authentication with exact parameter names
             if self.gssso_token:
                 search_params['gssso'] = self.gssso_token
             

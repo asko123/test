@@ -3,6 +3,12 @@ VESPA AUTHENTICATION SETUP
 
 If you're getting 500 errors, it's likely authentication-related.
 
+IMPORTANT: Vespa API uses exact parameter names:
+- gssso (not gssso_token)
+- x_api_key (not api_key)
+
+These are now correctly implemented in the code.
+
 STREAMLIT APP
 -------------
 
