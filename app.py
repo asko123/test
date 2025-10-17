@@ -234,17 +234,18 @@ with st.sidebar:
             st.session_state.vespa_env = vespa_env
             
             # Authentication fields
-            st.markdown("**Authentication (Optional)**")
             vespa_gssso = st.text_input(
-                "GSSO Token",
+                "GSSSO Token (Optional)",
+                value="",
                 type="password",
-                help="Optional GSSO token for authentication. Required if getting 401/500 errors."
+                help="Enter your GSSSO token if required for authentication"
             )
             
             vespa_api_key = st.text_input(
-                "API Key",
+                "API Key (Optional)",
+                value="",
                 type="password",
-                help="Optional API key for authentication"
+                help="Enter API key if required"
             )
             
             # Initialize Vespa wrapper
@@ -254,8 +255,8 @@ with st.sidebar:
                         vespa_wrapper = create_vespa_wrapper(
                             schema_id=vespa_schema_id,
                             env=vespa_env,
-                            gssso=vespa_gssso if vespa_gssso else None,
-                            x_api_key=vespa_api_key if vespa_api_key else None
+                            gssso_token=vespa_gssso if vespa_gssso else None,
+                            api_key=vespa_api_key if vespa_api_key else None
                         )
                         if vespa_wrapper and vespa_wrapper.is_available():
                             # Test connection
