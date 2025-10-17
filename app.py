@@ -252,6 +252,51 @@ with st.sidebar:
             if st.session_state.vespa_wrapper:
                 info = st.session_state.vespa_wrapper.get_schema_info()
                 st.info(f"Connected: {info['schema_id']} ({info['env']})")
+                
+                # Initialize agent with Vespa (without documents)
+                if st.button("Initialize Agent with Vespa", type="secondary"):
+                    if AGENT_MODULES_AVAILABLE and st.session_state.enable_agent:
+                        with st.spinner("Initializing ReAct Agent with Vespa..."):
+                            try:
+                                # Create minimal KG
+                                if not st.session_state.kg_retriever:
+                                    st.session_state.kg_retriever = KGRetriever()
+                                
+                                # Create query router
+                                st.session_state.query_router = QueryRouter(
+                                    complexity_threshold=config.AGENT_COMPLEXITY_THRESHOLD
+                                )
+                                
+                                # Create agent orchestrator
+                                agent_orchestrator = AgentOrchestrator(
+                                    app_id=app_id,
+                                    env=env,
+                                    model_name=model_name,
+                                    temperature=config.AGENT_TEMPERATURE
+                                )
+                                agent_orchestrator.initialize(
+                                    kg_retriever=st.session_state.kg_retriever,
+                                    original_documents="",
+                                    vespa_wrapper=st.session_state.vespa_wrapper
+                                )
+                                st.session_state.agent_orchestrator = agent_orchestrator
+                                st.session_state.agent_state = AgentState()
+                                
+                                # Initialize LLM if not already done
+                                if not st.session_state.llm:
+                                    llm_config = LLMConfig(
+                                        app_id=app_id,
+                                        env=env,
+                                        model_name=model_name,
+                                        temperature=temperature,
+                                        log_level=log_level,
+                                    )
+                                    st.session_state.llm = LLM.init(config=llm_config)
+                                
+                                st.success("Agent initialized with Vespa! You can now ask questions.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed to initialize agent: {str(e)}")
     
     st.markdown("---")
     
@@ -472,8 +517,12 @@ with st.sidebar:
                     )
                     st.session_state.llm = LLM.init(config=llm_config)
                     
-                    # Initialize Agent if enabled
+                    # Initialize Agent if enabled (works with or without documents if Vespa available)
                     if config.ENABLE_AGENT_MODE and st.session_state.enable_agent and AGENT_MODULES_AVAILABLE:
+                        # Create minimal KG for agent even without documents
+                        if not st.session_state.kg_retriever and st.session_state.vespa_wrapper:
+                            st.session_state.kg_retriever = KGRetriever()
+                        
                         if st.session_state.kg_retriever:
                             with st.spinner("Initializing ReAct Agent..."):
                                 try:
@@ -491,10 +540,10 @@ with st.sidebar:
                                     )
                                 agent_orchestrator.initialize(
                                     kg_retriever=st.session_state.kg_retriever,
-                                    original_documents=st.session_state.extracted_text,
+                                    original_documents=st.session_state.extracted_text if st.session_state.extracted_text else "",
                                     vespa_wrapper=st.session_state.vespa_wrapper
                                 )
-                                st.session_state.agent_orchestrator = agent_orchestrator
+                                    st.session_state.agent_orchestrator = agent_orchestrator
                                     
                                     # Create agent state for session tracking
                                     st.session_state.agent_state = AgentState()
