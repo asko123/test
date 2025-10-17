@@ -23,3 +23,10 @@ AGENT_TEMPERATURE = 0.2  # Temperature for agent (slightly higher for reasoning)
 SHOW_AGENT_REASONING = True  # Show agent reasoning trace in UI
 AGENT_DEFAULT_ENABLED = False  # Whether agent mode is enabled by default in UI
 
+# Vespa Vector Store Configuration
+ENABLE_VESPA_SEARCH = True  # Enable/disable Vespa DB search
+VESPA_SCHEMA_ID = "tech_risk_ai"  # Vespa schema ID
+VESPA_ENV = "uat"  # Vespa environment (dev, uat, or prod)
+VESPA_TOP_K = 10  # Number of results to retrieve from Vespa
+VESPA_AS_FALLBACK = True  # Use Vespa when no documents uploaded
+

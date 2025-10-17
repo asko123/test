@@ -40,6 +40,16 @@ except ImportError as e:
     AgentOrchestrator = None
     AgentState = None
 
+# Import Vespa with error handling
+try:
+    from vespa_search import VespaSearchWrapper, create_vespa_wrapper
+    VESPA_AVAILABLE = True
+except ImportError as e:
+    VESPA_AVAILABLE = False
+    VESPA_IMPORT_ERROR = str(e)
+    VespaSearchWrapper = None
+    create_vespa_wrapper = None
+
 # Page configuration
 st.set_page_config(
     page_title="Document Chat Bot",
@@ -71,6 +81,16 @@ if 'agent_state' not in st.session_state:
     st.session_state.agent_state = None
 if 'show_agent_trace' not in st.session_state:
     st.session_state.show_agent_trace = config.SHOW_AGENT_REASONING
+
+# Vespa-related session state
+if 'vespa_wrapper' not in st.session_state:
+    st.session_state.vespa_wrapper = None
+if 'enable_vespa' not in st.session_state:
+    st.session_state.enable_vespa = config.ENABLE_VESPA_SEARCH
+if 'vespa_schema_id' not in st.session_state:
+    st.session_state.vespa_schema_id = config.VESPA_SCHEMA_ID
+if 'vespa_env' not in st.session_state:
+    st.session_state.vespa_env = config.VESPA_ENV
 
 # Custom CSS
 st.markdown("""
@@ -184,6 +204,54 @@ with st.sidebar:
     if use_kg and st.session_state.kg_retriever:
         with st.expander("View KG Statistics"):
             st.markdown(st.session_state.kg_retriever.export_graph_summary())
+    
+    st.markdown("---")
+    
+    # Vespa Vector Store Settings
+    if config.ENABLE_VESPA_SEARCH and VESPA_AVAILABLE:
+        st.subheader("Vespa Vector Store")
+        enable_vespa = st.checkbox(
+            "Enable Vespa Search",
+            value=st.session_state.enable_vespa,
+            help="Use Vespa vector database for additional context. Automatically used as fallback when no documents uploaded."
+        )
+        st.session_state.enable_vespa = enable_vespa
+        
+        if enable_vespa:
+            vespa_schema_id = st.text_input(
+                "Vespa Schema ID",
+                value=st.session_state.vespa_schema_id,
+                help="Schema identifier in Vespa DB"
+            )
+            st.session_state.vespa_schema_id = vespa_schema_id
+            
+            vespa_env = st.selectbox(
+                "Vespa Environment",
+                ["dev", "uat", "prod"],
+                index=["dev", "uat", "prod"].index(st.session_state.vespa_env),
+                help="Vespa environment to connect to"
+            )
+            st.session_state.vespa_env = vespa_env
+            
+            # Initialize Vespa wrapper
+            if st.button("Connect to Vespa", type="secondary"):
+                with st.spinner("Connecting to Vespa..."):
+                    try:
+                        vespa_wrapper = create_vespa_wrapper(
+                            schema_id=vespa_schema_id,
+                            env=vespa_env
+                        )
+                        if vespa_wrapper and vespa_wrapper.is_available():
+                            st.session_state.vespa_wrapper = vespa_wrapper
+                            st.success(f"Connected to Vespa: {vespa_schema_id} ({vespa_env})")
+                        else:
+                            st.error("Failed to connect to Vespa")
+                    except Exception as e:
+                        st.error(f"Vespa connection error: {str(e)}")
+            
+            if st.session_state.vespa_wrapper:
+                info = st.session_state.vespa_wrapper.get_schema_info()
+                st.info(f"Connected: {info['schema_id']} ({info['env']})")
     
     st.markdown("---")
     
@@ -421,11 +489,12 @@ with st.sidebar:
                                         model_name=model_name,
                                         temperature=config.AGENT_TEMPERATURE
                                     )
-                                    agent_orchestrator.initialize(
-                                        kg_retriever=st.session_state.kg_retriever,
-                                        original_documents=st.session_state.extracted_text
-                                    )
-                                    st.session_state.agent_orchestrator = agent_orchestrator
+                                agent_orchestrator.initialize(
+                                    kg_retriever=st.session_state.kg_retriever,
+                                    original_documents=st.session_state.extracted_text,
+                                    vespa_wrapper=st.session_state.vespa_wrapper
+                                )
+                                st.session_state.agent_orchestrator = agent_orchestrator
                                     
                                     # Create agent state for session tracking
                                     st.session_state.agent_state = AgentState()
@@ -474,29 +543,49 @@ st.markdown("Ask questions about your uploaded documents.")
 
 # Instructions
 if not st.session_state.extracted_text:
-    st.info("""
-    **Getting Started:**
-    1. Configure your App ID and Environment in the sidebar
-    2. Enable Knowledge Graph Enhancement for better responses (recommended)
-    3. Upload one or more documents (PDF, JSON, JSONL, or TXT)
-    4. Click 'Process Documents' to extract text and build the knowledge graph
-    5. Start asking questions about your documents
-    
-    **Knowledge Graph Benefits:**
-    - Automatically extracts entities (controls, risks, assets, policies, etc.)
-    - Identifies relationships between entities
-    - Provides better context and linkage for more accurate responses
-    - Enables comprehensive analysis of connected information
-    
-    **ReAct Agent Mode:**
-    - Enable in sidebar for complex multi-step reasoning
-    - Agent automatically activates for complex queries
-    - Uses your LLM iteratively with 9 specialized tools
-    - View "How Agent-LLM Interaction Works" in sidebar for details
-    """)
-else:
+    # Check if Vespa is available as fallback
+    if st.session_state.vespa_wrapper and config.VESPA_AS_FALLBACK:
+        st.success("""
+        **Vespa Mode Enabled**
+        
+        No documents uploaded - using Vespa vector database for context.
+        
+        You can ask questions and the agent will search the Vespa DB for relevant information.
+        """)
+    else:
+        st.info("""
+        **Getting Started:**
+        1. Configure your App ID and Environment in the sidebar
+        2. Enable Knowledge Graph Enhancement for better responses (recommended)
+        3. **Option A:** Upload documents (PDF, JSON, JSONL, or TXT) and click 'Process Documents'
+        4. **Option B:** Enable and connect to Vespa Vector Store for broader knowledge base
+        5. Start asking questions!
+        
+        **Knowledge Graph Benefits:**
+        - Automatically extracts entities (controls, risks, assets, policies, etc.)
+        - Identifies relationships between entities
+        - Provides better context and linkage for more accurate responses
+        - Enables comprehensive analysis of connected information
+        
+        **Vespa Vector Store:**
+        - Access broader knowledge base beyond uploaded documents
+        - Automatic fallback when no documents uploaded
+        - Search with filters for specific domains
+        
+        **ReAct Agent Mode:**
+        - Enable in sidebar for complex multi-step reasoning
+        - Agent automatically activates for complex queries
+        - Uses your LLM iteratively with 10 specialized tools (9 KG + 1 Vespa)
+        - View "How Agent-LLM Interaction Works" in sidebar for details
+        """)
+# Allow chat if documents are loaded OR Vespa is connected
+if st.session_state.extracted_text or (st.session_state.vespa_wrapper and config.VESPA_AS_FALLBACK):
     # Show ready message with KG stats
-    ready_message = f"Ready to chat! {len(st.session_state.uploaded_files_info)} documents loaded."
+    if st.session_state.extracted_text:
+        ready_message = f"Ready to chat! {len(st.session_state.uploaded_files_info)} documents loaded."
+    else:
+        ready_message = "Ready to chat! Using Vespa vector database for context."
+    
     if st.session_state.use_kg and st.session_state.kg_retriever:
         kg_stats = st.session_state.kg_retriever.get_statistics()
         ready_message += f" | KG: {kg_stats['entity_count']} entities, {kg_stats['relationship_count']} relationships"
@@ -528,8 +617,11 @@ else:
         </div>
         """, unsafe_allow_html=True)
     
-    # Chat input - always visible when documents are loaded
-    prompt = st.chat_input("Ask a question about your documents...")
+    # Chat input - always visible when documents are loaded or Vespa is connected
+    if st.session_state.extracted_text:
+        prompt = st.chat_input("Ask a question about your documents...")
+    else:
+        prompt = st.chat_input("Ask a question (using Vespa vector database)...")
     
     if prompt:
         # Display user message immediately
@@ -575,12 +667,30 @@ else:
                             actual_response += trace_info
                 
                 # Build prompt based on whether KG is enabled
-                elif st.session_state.use_kg and st.session_state.kg_retriever:
+                elif st.session_state.use_kg and st.session_state.kg_retriever and st.session_state.extracted_text:
                     # Use Knowledge Graph enhanced prompt (simple flow)
                     full_prompt = st.session_state.kg_retriever.build_contextual_prompt(
                         prompt, 
                         st.session_state.extracted_text
                     )
+                elif st.session_state.vespa_wrapper and not st.session_state.extracted_text:
+                    # Use Vespa as fallback when no documents uploaded
+                    vespa_result = st.session_state.vespa_wrapper.search(prompt, top_k=config.VESPA_TOP_K)
+                    vespa_context = st.session_state.vespa_wrapper.format_results_for_llm(vespa_result)
+                    
+                    full_prompt = f"""You are a cybersecurity and risk analysis assistant with access to a vector database.
+
+{vespa_context}
+
+Question: {prompt}
+
+Instructions:
+1. Use the Vespa search results above to answer the question
+2. Cite specific results when providing answers
+3. If the results don't contain relevant information, state that clearly
+4. Format your response professionally with bullet points and clear organization
+
+Answer:"""
                 else:
                     # Use traditional prompt
                     full_prompt = f"""You are a cybersecurity and risk analysis assistant. Your role is to help users understand security controls, compliance requirements, risk assessments, and related governance documentation.
@@ -594,7 +704,7 @@ The documents may contain:
 - Regular text describing security procedures and requirements
 
 Document Content:
-{st.session_state.extracted_text}
+{st.session_state.extracted_text if st.session_state.extracted_text else "No documents uploaded."}
 
 Question: {prompt}
 

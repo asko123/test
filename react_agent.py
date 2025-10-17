@@ -11,6 +11,7 @@ from agent_tools import create_agent_tools
 from prompts import AGENT_SYSTEM_PROMPT
 from agent_state import AgentState
 from kg_retriever import KGRetriever
+from vespa_search import VespaSearchWrapper
 import json
 
 
@@ -26,7 +27,8 @@ class DocumentReActAgent:
         kg_retriever: KGRetriever,
         original_documents: str,
         max_iterations: int = 10,
-        system_prompt: str = None
+        system_prompt: str = None,
+        vespa_wrapper: Optional[VespaSearchWrapper] = None
     ):
         """
         Initialize the ReAct agent.
@@ -37,15 +39,17 @@ class DocumentReActAgent:
             original_documents: Original document content as string
             max_iterations: Maximum reasoning iterations
             system_prompt: Optional custom system prompt
+            vespa_wrapper: Optional VespaSearchWrapper for vector search
         """
         self.llm_adapter = llm_adapter
         self.kg_retriever = kg_retriever
         self.original_documents = original_documents
         self.max_iterations = max_iterations
         self.system_prompt = system_prompt or AGENT_SYSTEM_PROMPT
+        self.vespa_wrapper = vespa_wrapper
         
         # Create tools
-        self.tools = create_agent_tools(kg_retriever, original_documents)
+        self.tools = create_agent_tools(kg_retriever, original_documents, vespa_wrapper)
         
         # Create the ReAct agent
         self.agent = create_react_agent(
@@ -248,7 +252,8 @@ def create_react_agent_instance(
     model_name: str = "gemini-2.0-flash",
     temperature: float = 0.2,
     max_iterations: int = 10,
-    log_level: str = "DEBUG"
+    log_level: str = "DEBUG",
+    vespa_wrapper: Optional[VespaSearchWrapper] = None
 ) -> DocumentReActAgent:
     """
     Factory function to create a configured ReAct agent.
@@ -262,6 +267,7 @@ def create_react_agent_instance(
         temperature: LLM temperature
         max_iterations: Max reasoning iterations
         log_level: Logging level
+        vespa_wrapper: Optional VespaSearchWrapper for vector search
         
     Returns:
         Configured DocumentReActAgent instance
@@ -280,7 +286,8 @@ def create_react_agent_instance(
         llm_adapter=llm_adapter,
         kg_retriever=kg_retriever,
         original_documents=original_documents,
-        max_iterations=max_iterations
+        max_iterations=max_iterations,
+        vespa_wrapper=vespa_wrapper
     )
 
 
@@ -311,16 +318,24 @@ class AgentOrchestrator:
         self.temperature = temperature
         self.agent = None
         self.kg_retriever = None
+        self.vespa_wrapper = None
     
-    def initialize(self, kg_retriever: KGRetriever, original_documents: str):
+    def initialize(
+        self,
+        kg_retriever: KGRetriever,
+        original_documents: str,
+        vespa_wrapper: Optional[VespaSearchWrapper] = None
+    ):
         """
-        Initialize the agent with KG and documents.
+        Initialize the agent with KG, documents, and optional Vespa search.
         
         Args:
             kg_retriever: KGRetriever instance
             original_documents: Document content
+            vespa_wrapper: Optional VespaSearchWrapper for vector search
         """
         self.kg_retriever = kg_retriever
+        self.vespa_wrapper = vespa_wrapper
         
         self.agent = create_react_agent_instance(
             app_id=self.app_id,
@@ -328,7 +343,8 @@ class AgentOrchestrator:
             kg_retriever=kg_retriever,
             original_documents=original_documents,
             model_name=self.model_name,
-            temperature=self.temperature
+            temperature=self.temperature,
+            vespa_wrapper=vespa_wrapper
         )
     
     def query(

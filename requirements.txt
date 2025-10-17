@@ -10,3 +10,5 @@ langgraph>=0.0.20
 langchain>=0.1.0
 langchain-core>=0.1.0
 
+# Note: goldmansachs.awm_genai includes VectorStore for Vespa search
+

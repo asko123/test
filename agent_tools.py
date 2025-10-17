@@ -1,12 +1,13 @@
 """
 Agent Tools for LangGraph ReAct Agent
-Comprehensive set of tools for Knowledge Graph operations, document search, and reasoning
+Comprehensive set of tools for Knowledge Graph operations, document search, Vespa DB, and reasoning
 """
 
 from typing import List, Dict, Any, Optional
 from langchain_core.tools import tool
 from knowledge_graph import KnowledgeGraph
 from kg_retriever import KGRetriever
+from vespa_search import VespaSearchWrapper
 import json
 import re
 
@@ -100,13 +101,18 @@ def _search_entities_tool(
         return json.dumps({"error": str(e)})
 
 
-def create_agent_tools(kg_retriever: KGRetriever, original_documents: str) -> List:
+def create_agent_tools(
+    kg_retriever: KGRetriever,
+    original_documents: str,
+    vespa_wrapper: Optional[VespaSearchWrapper] = None
+) -> List:
     """
-    Create all agent tools with access to the knowledge graph and documents.
+    Create all agent tools with access to the knowledge graph, documents, and Vespa DB.
     
     Args:
         kg_retriever: KGRetriever instance
         original_documents: Original document content
+        vespa_wrapper: Optional VespaSearchWrapper for vector search
         
     Returns:
         List of LangChain tools
@@ -586,8 +592,74 @@ def create_agent_tools(kg_retriever: KGRetriever, original_documents: str) -> Li
         except Exception as e:
             return json.dumps({"error": str(e)})
     
+    # Vespa vector store search tool (optional)
+    if vespa_wrapper:
+        @tool
+        def search_vespa_db(
+            query: str,
+            top_k: int = 10,
+            filters_json: Optional[str] = None
+        ) -> str:
+            """
+            Search the Vespa vector database for additional context and information.
+            
+            Args:
+                query: Search query or question
+                top_k: Number of results to return (default 10)
+                filters_json: Optional JSON string with filters (e.g., '{"field_1_s": "demo"}')
+            
+            Returns:
+                JSON string with search results from Vespa DB
+            
+            Examples:
+                - search_vespa_db(query="What is the ingestion demo?", filters_json='{"field_1_s": "demo"}')
+                - search_vespa_db(query="apple's net earning in 2024 Q3", top_k=10)
+                - search_vespa_db(query="security controls for database")
+            
+            Use this tool when:
+            - You need additional context beyond uploaded documents
+            - Looking for specific information in the broader knowledge base
+            - Documents don't contain the needed information
+            """
+            try:
+                # Parse filters if provided
+                filters = None
+                if filters_json:
+                    try:
+                        filters = json.loads(filters_json)
+                    except json.JSONDecodeError:
+                        return json.dumps({
+                            "error": f"Invalid filters JSON: {filters_json}"
+                        })
+                
+                # Search Vespa
+                result = vespa_wrapper.search(
+                    query=query,
+                    top_k=top_k,
+                    filters=filters
+                )
+                
+                # Format for LLM
+                if result.get('success'):
+                    formatted = vespa_wrapper.format_results_for_llm(result)
+                    return json.dumps({
+                        'success': True,
+                        'query': query,
+                        'results_count': result.get('count', 0),
+                        'formatted_results': formatted,
+                        'raw_results': result.get('results', [])
+                    }, indent=2)
+                else:
+                    return json.dumps({
+                        'success': False,
+                        'error': result.get('error', 'Unknown error')
+                    })
+            
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+    
     # Return all tools
-    return [
+    tools = [
         search_entities,
         get_entity_details,
         get_entity_relationships,
@@ -598,4 +670,10 @@ def create_agent_tools(kg_retriever: KGRetriever, original_documents: str) -> Li
         traverse_graph,
         query_kg_statistics,
     ]
+    
+    # Add Vespa tool if available
+    if vespa_wrapper:
+        tools.append(search_vespa_db)
+    
+    return tools
 
